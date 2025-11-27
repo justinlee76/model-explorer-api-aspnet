@@ -1,0 +1,13 @@
+﻿using MongoDB.Bson.Serialization.Attributes;
+
+namespace ModelStoreApi.Models
+{
+    public class TrainingData : ModelInfo
+    {
+        [BsonElement("metric_name")]
+        public string MetricName { get; set; } = null!;
+
+        [BsonElement("metric_history")]
+        public double[] MetricHistory { get; set; } = null!;
+    }
+}
