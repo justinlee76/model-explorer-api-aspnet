@@ -2,6 +2,7 @@
 using ModelStoreApi.Models;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using MongoDB.Driver.GridFS;
 
 namespace ModelStoreApi
 {
@@ -41,6 +42,7 @@ namespace ModelStoreApi
         private readonly ILogger<ModelStoreClient> _logger;
         private readonly IMongoDatabase _modelDb;
         private readonly IMongoCollection<Model> _modelCollection;
+        private readonly IGridFSBucket _bucket;
 
         public ModelStoreClient(IOptions<ModelStoreSettings> modelStoreSettings, ILogger<ModelStoreClient> logger)
         {
@@ -48,6 +50,7 @@ namespace ModelStoreApi
             _logger = logger;
             _modelDb = _mongoClient.GetDatabase(modelStoreSettings.Value.Database);
             _modelCollection = _modelDb.GetCollection<Model>(modelStoreSettings.Value.Collection);
+            _bucket = new GridFSBucket(_modelDb);
         }
 
         public async Task<List<string>> GetTagsAsync()
@@ -180,7 +183,19 @@ namespace ModelStoreApi
         {
             _logger.LogInformation("Deleting {modelIds}", string.Join(", ", modelIds));
             var filter = Builders<Model>.Filter.In(m => m.Id, modelIds);
-            return await _modelCollection.DeleteManyAsync(filter);
+            var deleteResult = await _modelCollection.DeleteManyAsync(filter);
+            await Parallel.ForEachAsync(modelIds, new ParallelOptions { MaxDegreeOfParallelism = 4 }, async (modelId, ct) =>
+            {
+                try
+                {
+                    await _bucket.DeleteAsync(modelId, ct);
+                }
+                catch (GridFSFileNotFoundException)
+                {
+                    _logger.LogWarning("Model state for {modelId} not found", modelId);
+                }
+            });
+            return deleteResult;
         }
 
         public async Task MonitorModelsAsync(Func<ChangeStreamDocument<Model>, CancellationToken, Task> action, CancellationToken cancellationToken)
