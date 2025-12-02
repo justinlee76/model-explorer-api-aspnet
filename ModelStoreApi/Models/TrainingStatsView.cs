@@ -2,7 +2,7 @@
 
 namespace ModelStoreApi.Models
 {
-    public record TrainingStatsView(DateTime DateTime, string Id, string Class, string Module, string Args, string KWArgs, string Tag, int TrainableParams, double MinValLoss, double MaxValAccuracy)
+    public record TrainingStatsView(DateTime DateTime, string Id, string Class, string Module, string Args, string KWArgs, string Tag, int TrainableParams, double MinValLoss, double MaxValAccuracy, Status status)
     {
         public TrainingStatsView(TrainingStats ts) 
             : this(ts.DateTime, 
@@ -13,7 +13,8 @@ namespace ModelStoreApi.Models
                   JsonSerializer.Serialize(ts.KWArgs), 
                   ts.Tag, ts.TrainableParams, 
                   ts.MinValLoss, 
-                  ts.MaxValAccuracy)
+                  ts.MaxValAccuracy,
+                  ts.Status)
         {
 
         }

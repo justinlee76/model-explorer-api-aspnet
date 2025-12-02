@@ -3,6 +3,12 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace ModelStoreApi.Models
 {
+    public enum Status
+    {
+        Training = 0,
+        Trained = 1,
+    }
+
     public class ModelInfo
     {
         [BsonElement("datetime")]
@@ -24,5 +30,8 @@ namespace ModelStoreApi.Models
 
         [BsonElement("tag")]
         public string Tag { get; set; } = null!;
+
+        [BsonElement("status")]
+        public Status Status { get; set; }
     }
 }

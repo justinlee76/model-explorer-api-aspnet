@@ -34,7 +34,8 @@ namespace ModelStoreApi
                                 {
                                     "$training_history.val_accuracy",
                                     0
-                                })) }
+                                })) },
+                        { "status", 1 }
                     });
 
 
