@@ -3,7 +3,7 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace ModelStoreApi.Models
 {
-    public enum Status
+    public enum ModelStatus
     {
         Training = 0,
         Trained = 1,
@@ -32,6 +32,6 @@ namespace ModelStoreApi.Models
         public string Tag { get; set; } = null!;
 
         [BsonElement("status")]
-        public Status Status { get; set; }
+        public ModelStatus Status { get; set; }
     }
 }

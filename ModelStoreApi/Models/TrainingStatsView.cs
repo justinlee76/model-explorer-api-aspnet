@@ -2,7 +2,7 @@
 
 namespace ModelStoreApi.Models
 {
-    public record TrainingStatsView(DateTime DateTime, string Id, string Class, string Module, string Args, string KWArgs, string Tag, int TrainableParams, double MinValLoss, double MaxValAccuracy, Status status)
+    public record TrainingStatsView(DateTime DateTime, string Id, string Class, string Module, string Args, string KWArgs, string Tag, int TrainableParams, double MinValLoss, double MaxValAccuracy, ModelStatus status)
     {
         public TrainingStatsView(TrainingStats ts) 
             : this(ts.DateTime, 

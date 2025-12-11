@@ -8,3 +8,18 @@ POST {{ModelStoreApi_HostAddress}}/modelstore/GetTags
 
 ###
 
+
+POST {{ModelStoreApi_HostAddress}}/modelstore/GetTasks
+
+###
+
+POST {{ModelStoreApi_HostAddress}}/modelstore/InsertJob
+Content-Type: application/json
+
+{
+  "task": "convnet_task.ConvNetTask",
+  "args": [[128, 128], [16, 32], [64, 10]],
+  "kwargs": { "conv_dropout": 0.1, "fc_dropout": 0.1, "tag": "animals", "image_root": "animals/images" }
+}
+
+###

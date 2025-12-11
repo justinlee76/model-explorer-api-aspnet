@@ -20,13 +20,13 @@ namespace ModelStoreApi.Services
             _logger = logger;
         }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        protected override async System.Threading.Tasks.Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("Starting monitoring of model collection");
             await _modelStoreClient.MonitorModelsAsync(ProcessModelChangeAsync, stoppingToken);
         }
 
-        private async Task ProcessModelChangeAsync(ChangeStreamDocument<Model> change, CancellationToken stoppingToken)
+        private async System.Threading.Tasks.Task ProcessModelChangeAsync(ChangeStreamDocument<Model> change, CancellationToken stoppingToken)
         {
             _logger.LogInformation("Processing model change: {change}", change);
             ObjectId modelId;
@@ -72,7 +72,7 @@ namespace ModelStoreApi.Services
                                 }
                             }
 
-                            await Task.WhenAll(updatesMap.Keys.Select(k => SendAddMetricDataAsync(k, updatesMap[k])));
+                            await System.Threading.Tasks.Task.WhenAll(updatesMap.Keys.Select(k => SendAddMetricDataAsync(k, updatesMap[k])));
 
                             trainingStats = await _modelStoreClient.GetTrainingStatsForModelAsync(modelId);
                             await SendUpdateTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsView(trainingStats));
@@ -94,25 +94,25 @@ namespace ModelStoreApi.Services
             metricUpdates.Add(new MetricUpdate(modelId, metricName, index, metricValue));
         }
 
-        private async Task SendAddMetricDataAsync(SeriesKey seriesKey, List<MetricUpdate> metricUpdates)
+        private async System.Threading.Tasks.Task SendAddMetricDataAsync(SeriesKey seriesKey, List<MetricUpdate> metricUpdates)
         {
             _logger.LogInformation("AddMetricData: seriesKey = {seriesKey}, metricUpdates = {metricUpdates}", seriesKey, metricUpdates);
             await _hubContext.Clients.Group(seriesKey.AsString).SendAsync("AddMetricData", metricUpdates);
         }
 
-        private async Task SendAddTrainingStatsAsync(string tag, TrainingStatsView trainingStatsView)
+        private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, TrainingStatsView trainingStatsView)
         {
             _logger.LogInformation("AddTrainingStats: tag = {tag}, trainingStatsView = {trainingStatsView}", tag, trainingStatsView);
             await _hubContext.Clients.Group(tag).SendAsync("AddTrainingStats", trainingStatsView);
         }
 
-        private async Task SendUpdateTrainingStatsAsync(string tag, TrainingStatsView trainingStatsView)
+        private async System.Threading.Tasks.Task SendUpdateTrainingStatsAsync(string tag, TrainingStatsView trainingStatsView)
         {
             _logger.LogInformation("UpdateTrainingStats: tag = {tag}, trainingStatsView = {trainingStatsView}", tag, trainingStatsView);
             await _hubContext.Clients.Group(tag).SendAsync("UpdateTrainingStats", trainingStatsView);
         }
 
-        private async Task SendRemoveTrainingStatsAsync(string tag, string modelId)
+        private async System.Threading.Tasks.Task SendRemoveTrainingStatsAsync(string tag, string modelId)
         {
             _logger.LogInformation("RemoveTrainingStats: tag = {tag}, modelId = {modelId}", tag, modelId);
             await _hubContext.Clients.Group(tag).SendAsync("RemoveTrainingStats", modelId);

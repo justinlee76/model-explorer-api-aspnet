@@ -41,22 +41,26 @@ namespace ModelStoreApi
 
         private readonly MongoClient _mongoClient;
         private readonly ILogger<ModelStoreClient> _logger;
-        private readonly IMongoDatabase _modelDb;
-        private readonly IMongoCollection<Model> _modelCollection;
+        private readonly IMongoDatabase _db;
+        private readonly IMongoCollection<Model> _models;
+        private readonly IMongoCollection<Models.Task> _tasks;
+        private readonly IMongoCollection<Job> _jobs;
         private readonly IGridFSBucket _bucket;
 
         public ModelStoreClient(IOptions<ModelStoreSettings> modelStoreSettings, ILogger<ModelStoreClient> logger)
         {
             _mongoClient = new MongoClient(modelStoreSettings.Value.Uri);
             _logger = logger;
-            _modelDb = _mongoClient.GetDatabase(modelStoreSettings.Value.Database);
-            _modelCollection = _modelDb.GetCollection<Model>(modelStoreSettings.Value.Collection);
-            _bucket = new GridFSBucket(_modelDb);
+            _db = _mongoClient.GetDatabase(modelStoreSettings.Value.Database);
+            _models = _db.GetCollection<Model>(modelStoreSettings.Value.ModelCollection);
+            _tasks = _db.GetCollection<Models.Task>(modelStoreSettings.Value.TaskCollection);
+            _jobs = _db.GetCollection<Job>(modelStoreSettings.Value.JobCollection);
+            _bucket = new GridFSBucket(_db);
         }
 
         public async Task<List<string>> GetTagsAsync()
         {
-            var tags = await _modelCollection.Distinct(m => m.Tag, Builders<Model>.Filter.Empty).ToListAsync();
+            var tags = await _models.Distinct(m => m.Tag, Builders<Model>.Filter.Empty).ToListAsync();
             return tags;
         }
 
@@ -71,11 +75,11 @@ namespace ModelStoreApi
                         { "metrics",
                 new BsonDocument("$objectToArray", "$training_history") }
                     }),
-                new BsonDocument("$group",
+                new("$group",
                 new BsonDocument("_id", "$metrics.k")),
-                new BsonDocument("$unwind",
+                new("$unwind",
                 new BsonDocument("path", "$_id")),
-                new BsonDocument("$project",
+                new("$project",
                 new BsonDocument
                     {
                         { "metric_name", "$_id" },
@@ -83,7 +87,7 @@ namespace ModelStoreApi
                     })
             };
 
-            var docs = await _modelCollection.Aggregate(pipeline).ToListAsync();
+            var docs = await _models.Aggregate(pipeline).ToListAsync();
             var metricNames = docs.Select(d => d["metric_name"].AsString).ToList();
 
             return metricNames;
@@ -98,7 +102,7 @@ namespace ModelStoreApi
                 s_trainingStatsProjection
             };
 
-            var trainingStats = await _modelCollection.Aggregate(pipeline).ToListAsync();
+            var trainingStats = await _models.Aggregate(pipeline).ToListAsync();
 
             return trainingStats;
         }
@@ -112,7 +116,7 @@ namespace ModelStoreApi
                 s_trainingStatsProjection
             };
 
-            var list = await _modelCollection.Aggregate(pipeline).ToListAsync();
+            var list = await _models.Aggregate(pipeline).ToListAsync();
 
             TrainingStats trainingStats = null!;
 
@@ -175,7 +179,7 @@ namespace ModelStoreApi
                     })
             };
 
-            var trainingData = await _modelCollection.Aggregate(pipeline).ToListAsync();
+            var trainingData = await _models.Aggregate(pipeline).ToListAsync();
 
             return trainingData;
         }
@@ -184,7 +188,7 @@ namespace ModelStoreApi
         {
             _logger.LogInformation("Deleting {modelIds}", string.Join(", ", modelIds));
             var filter = Builders<Model>.Filter.In(m => m.Id, modelIds);
-            var deleteResult = await _modelCollection.DeleteManyAsync(filter);
+            var deleteResult = await _models.DeleteManyAsync(filter);
             await Parallel.ForEachAsync(modelIds, new ParallelOptions { MaxDegreeOfParallelism = 4 }, async (modelId, ct) =>
             {
                 try
@@ -199,7 +203,7 @@ namespace ModelStoreApi
             return deleteResult;
         }
 
-        public async Task MonitorModelsAsync(Func<ChangeStreamDocument<Model>, CancellationToken, Task> action, CancellationToken cancellationToken)
+        public async System.Threading.Tasks.Task MonitorModelsAsync(Func<ChangeStreamDocument<Model>, CancellationToken, System.Threading.Tasks.Task> action, CancellationToken cancellationToken)
         {
             var pipeline = new EmptyPipelineDefinition<ChangeStreamDocument<Model>>()
                 .Match(change => 
@@ -207,7 +211,7 @@ namespace ModelStoreApi
                 change.OperationType == ChangeStreamOperationType.Update || 
                 change.OperationType == ChangeStreamOperationType.Delete);
 
-            using var cursor = await _modelCollection.WatchAsync(
+            using var cursor = await _models.WatchAsync(
                 pipeline, 
                 new ChangeStreamOptions { FullDocument = ChangeStreamFullDocumentOption.UpdateLookup, FullDocumentBeforeChange = ChangeStreamFullDocumentBeforeChangeOption.Required }, 
                 cancellationToken);
@@ -218,6 +222,20 @@ namespace ModelStoreApi
                 await action(change, cancellationToken);
 
             }, cancellationToken);
+        }
+
+        public async Task<List<Models.Task>> GetTasksAsync()
+        {
+            var tasks = await _tasks.Find(Builders<Models.Task>.Filter.Empty).ToListAsync();
+            return tasks;
+        }
+
+        public async Task<Job> InsertJobAsync(Job job)
+        {
+            job.DateTime = DateTime.UtcNow;
+            job.Status = JobStatus.Submitted;
+            await _jobs.InsertOneAsync(job);
+            return job;
         }
 
         public void Dispose()
