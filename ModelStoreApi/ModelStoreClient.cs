@@ -238,9 +238,29 @@ namespace ModelStoreApi
             return job;
         }
 
+        public async Task<Job> GetLastJobAsync()
+        {
+            var sort = Builders<Job>.Sort.Descending(j => j.DateTime);
+            var job = await _jobs
+                .Find(Builders<Job>.Filter.Empty)
+                .Sort(sort)
+                .Limit(1)
+                .FirstOrDefaultAsync();
+            return job;
+        }
+
         public void Dispose()
         {
-            _mongoClient?.Dispose();
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _mongoClient?.Dispose();
+            }
         }
     }
 }

@@ -9,6 +9,6 @@ namespace ModelStoreApi.Models
         public string Exception { get; set; } = null!;
 
         [BsonElement("stack_trace")]
-        public string StackTrace { get; set; } = null!;
+        public string? StackTrace { get; set; } = null!;
     }
 }

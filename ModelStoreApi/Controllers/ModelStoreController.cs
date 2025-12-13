@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
+using ModelStoreApi.JsonConverters;
 using ModelStoreApi.Models;
 using ModelStoreApi.Services;
 using MongoDB.Bson;
+using MongoDB.Bson.IO;
+using MongoDB.Driver;
 using System.Text.Json;
 
 namespace ModelStoreApi.Controllers
@@ -49,37 +52,102 @@ namespace ModelStoreApi.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<long>> DeleteModels([FromBody] string[] modelIds)
+        public async Task<ActionResult<DeleteModelsResponse>> DeleteModels([FromBody] string[] modelIds)
         {
             var result = await _modelStoreClient.DeleteModelsAsync([.. modelIds.Select(m => new ObjectId(m))]);
-            return result.DeletedCount;
+            return new DeleteModelsResponse { DeletedCount = result.DeletedCount };
         }
 
         [HttpPost]
-        public async Task<ActionResult<IEnumerable<Models.Task>>> GetTasks()
+        public async Task<ActionResult<IEnumerable<string>>> GetTasks()
         {
             var tasks = await _modelStoreClient.GetTasksAsync();
-            return tasks;
+            return tasks.Select(t => $"{t.Module}.{t.Class}").ToList();
         }
 
         [HttpPost]
-        public async Task<ActionResult<string>> InsertJob([FromBody] JobRequest request)
+        public async Task<ActionResult<JobResponse>> InsertJob([FromBody] JobRequest request)
         {
-            var index = request.Task.LastIndexOf('.');
-            var taskClass = request.Task[(index + 1)..];
-            var taskModule = request.Task[..index];
-            var args = new BsonArray(request.Args.Select(ToBsonValue));
-            var kwargs = new BsonDocument();
-            foreach (var kvp in request.KWArgs)
-                kwargs.Add(kvp.Key, ToBsonValue(kvp.Value));
-            var job = await _modelStoreClient.InsertJobAsync(new Job 
+            Job? job = null;
+            JobError? error = null;
+            try
             {
-                Module = taskModule,
-                Class = taskClass,
-                Args = args,
-                KWArgs = kwargs
-            });
-            return job.Id.ToString();
+                var index = request.Task.LastIndexOf('.');
+                var taskClass = request.Task[(index + 1)..];
+                var taskModule = request.Task[..index];
+                var args = new BsonArray(request.Args.Select(ToBsonValue));
+                var kwargs = new BsonDocument();
+                foreach (var kvp in request.KWArgs)
+                    kwargs.Add(kvp.Key, ToBsonValue(kvp.Value));
+                job = await _modelStoreClient.InsertJobAsync(new Job
+                {
+                    Module = taskModule,
+                    Class = taskClass,
+                    Args = args,
+                    KWArgs = kwargs
+                });
+            }
+            catch (Exception ex)
+            {
+                error = new JobError
+                {
+                    Exception = ex.Message,
+                    StackTrace = ex.StackTrace
+                };
+            }
+
+            return new JobResponse
+            {
+                Id = job?.Id.ToString() ?? null,
+                Error = error
+            };
+        }
+
+        private const int decimalPlaces = 6;
+
+        private static readonly JsonSerializerOptions jsonSerializerOptions = new()
+        {
+            Converters = 
+            { 
+                new BsonDocumentConverter(decimalPlaces), 
+                new BsonValueConverter(decimalPlaces)  
+            },
+            WriteIndented = true
+        };
+
+        [HttpPost]
+        public async Task<ActionResult<JobDefaults>> GetJobDefaults()
+        {
+            var lastJob = await _modelStoreClient.GetLastJobAsync();
+            string? task;
+            string args;
+            string kwargs;
+            if (lastJob != null)
+            {
+
+                task = $"{lastJob.Module}.{lastJob.Class}";
+                args = JsonSerializer.Serialize(lastJob.Args, jsonSerializerOptions);
+                kwargs = JsonSerializer.Serialize(lastJob.KWArgs, jsonSerializerOptions);
+            }
+            else
+            {
+                var tasks = await _modelStoreClient.GetTasksAsync();
+                if (tasks.Count > 0)
+                {
+                    var firstTask = tasks.First();
+                    task = $"{firstTask.Module}.{firstTask.Class}";
+                }
+                else
+                    task = null;
+                args = "[]";
+                kwargs = "{}";
+            }
+
+            return new JobDefaults(
+                    task,
+                    args,
+                    kwargs
+                );
         }
 
         private static BsonValue ToBsonValue(JsonElement element)
