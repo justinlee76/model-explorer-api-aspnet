@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
-using ModelStoreApi.Models;
+using ModelStoreApi.Domain;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using MongoDB.Driver.GridFS;
@@ -43,7 +43,7 @@ namespace ModelStoreApi
         private readonly ILogger<ModelStoreClient> _logger;
         private readonly IMongoDatabase _db;
         private readonly IMongoCollection<Model> _models;
-        private readonly IMongoCollection<Models.Task> _tasks;
+        private readonly IMongoCollection<Domain.Task> _tasks;
         private readonly IMongoCollection<Job> _jobs;
         private readonly IGridFSBucket _bucket;
 
@@ -53,7 +53,7 @@ namespace ModelStoreApi
             _logger = logger;
             _db = _mongoClient.GetDatabase(modelStoreSettings.Value.Database);
             _models = _db.GetCollection<Model>(modelStoreSettings.Value.ModelCollection);
-            _tasks = _db.GetCollection<Models.Task>(modelStoreSettings.Value.TaskCollection);
+            _tasks = _db.GetCollection<Domain.Task>(modelStoreSettings.Value.TaskCollection);
             _jobs = _db.GetCollection<Job>(modelStoreSettings.Value.JobCollection);
             _bucket = new GridFSBucket(_db);
         }
@@ -224,9 +224,9 @@ namespace ModelStoreApi
             }, cancellationToken);
         }
 
-        public async Task<List<Models.Task>> GetTasksAsync()
+        public async Task<List<Domain.Task>> GetTasksAsync()
         {
-            var tasks = await _tasks.Find(Builders<Models.Task>.Filter.Empty).ToListAsync();
+            var tasks = await _tasks.Find(Builders<Domain.Task>.Filter.Empty).ToListAsync();
             return tasks;
         }
 

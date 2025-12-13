@@ -1,7 +1,7 @@
 ﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace ModelStoreApi.Models
+namespace ModelStoreApi.Domain
 {
     public class JobError
     {

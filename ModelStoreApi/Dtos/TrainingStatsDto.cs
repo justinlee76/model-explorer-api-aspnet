@@ -1,10 +1,11 @@
-﻿using System.Text.Json;
+﻿using ModelStoreApi.Domain;
+using System.Text.Json;
 
-namespace ModelStoreApi.Models
+namespace ModelStoreApi.Dtos
 {
-    public record TrainingStatsView(DateTime DateTime, string Id, string Class, string Module, string Args, string KWArgs, string Tag, int TrainableParams, double MinValLoss, double MaxValAccuracy, ModelStatus Status)
+    public record TrainingStatsDto(DateTime DateTime, string Id, string Class, string Module, string Args, string KWArgs, string Tag, int TrainableParams, double MinValLoss, double MaxValAccuracy, ModelStatus Status)
     {
-        public TrainingStatsView(TrainingStats ts) 
+        public TrainingStatsDto(TrainingStats ts) 
             : this(ts.DateTime, 
                   ts.Id.ToString(), 
                   ts.Class, 

@@ -1,4 +1,4 @@
-﻿namespace ModelStoreApi.Models
+﻿namespace ModelStoreApi.Dtos
 {
     public class DeleteModelsResponse
     {

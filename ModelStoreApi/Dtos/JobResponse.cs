@@ -1,4 +1,6 @@
-﻿namespace ModelStoreApi.Models
+﻿using ModelStoreApi.Domain;
+
+namespace ModelStoreApi.Dtos
 {
     public class JobResponse
     {

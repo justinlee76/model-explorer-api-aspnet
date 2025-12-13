@@ -1,6 +1,6 @@
 ﻿using System.Text.Json;
 
-namespace ModelStoreApi.Models
+namespace ModelStoreApi.Dtos
 {
     public class JobRequest
     {

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using ModelStoreApi.Domain;
+using ModelStoreApi.Dtos;
 using ModelStoreApi.JsonConverters;
-using ModelStoreApi.Models;
 using ModelStoreApi.Services;
 using MongoDB.Bson;
 using MongoDB.Bson.IO;
@@ -35,19 +36,19 @@ namespace ModelStoreApi.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<IEnumerable<TrainingStatsView>>> GetTrainingStats([FromBody] string tag)
+        public async Task<ActionResult<IEnumerable<TrainingStatsDto>>> GetTrainingStats([FromBody] string tag)
         {
             var trainingStats = await _modelStoreClient.GetTrainingStatsForTagAsync(tag);
-            var statViews = trainingStats.Select(s => new TrainingStatsView(s)).ToList();
+            var statViews = trainingStats.Select(s => new TrainingStatsDto(s)).ToList();
             return statViews;
         }
 
         [HttpPost]
-        public async Task<ActionResult<IEnumerable<TrainingDataView>>> GetTrainingData([FromBody] SeriesKey[] seriesKeys)
+        public async Task<ActionResult<IEnumerable<TrainingDataDto>>> GetTrainingData([FromBody] SeriesKey[] seriesKeys)
         {
             var metricInfos = seriesKeys.Select(s => new MetricInfo(new ObjectId(s.ModelId), s.MetricName)).ToArray();
             var trainingData = await _modelStoreClient.GetTrainingDataAsync(metricInfos);
-            var seriesList = trainingData.Select(d => new TrainingDataView(d.Id.ToString(), d.MetricName, d.MetricHistory)).ToList();
+            var seriesList = trainingData.Select(d => new TrainingDataDto(d.Id.ToString(), d.MetricName, d.MetricHistory)).ToList();
             return seriesList;
         }
 

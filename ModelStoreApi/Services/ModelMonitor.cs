@@ -1,9 +1,10 @@
 ﻿
 using Microsoft.AspNetCore.SignalR;
-using ModelStoreApi.Models;
 using ModelStoreApi.Hubs;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using ModelStoreApi.Dtos;
+using ModelStoreApi.Domain;
 
 namespace ModelStoreApi.Services
 {
@@ -38,7 +39,7 @@ namespace ModelStoreApi.Services
                 {
                     case ChangeStreamOperationType.Insert:
                         var trainingStats = await _modelStoreClient.GetTrainingStatsForModelAsync(modelId);
-                        await SendAddTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsView(trainingStats));
+                        await SendAddTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsDto(trainingStats));
                         break;
                     case ChangeStreamOperationType.Delete:
                         await SendRemoveTrainingStatsAsync(change.FullDocumentBeforeChange.Tag, modelId.ToString());
@@ -75,7 +76,7 @@ namespace ModelStoreApi.Services
                             await System.Threading.Tasks.Task.WhenAll(updatesMap.Keys.Select(k => SendAddMetricDataAsync(k, updatesMap[k])));
 
                             trainingStats = await _modelStoreClient.GetTrainingStatsForModelAsync(modelId);
-                            await SendUpdateTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsView(trainingStats));
+                            await SendUpdateTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsDto(trainingStats));
                         }
                         break;
                 }
@@ -100,13 +101,13 @@ namespace ModelStoreApi.Services
             await _hubContext.Clients.Group(seriesKey.AsString).SendAsync("AddMetricData", metricUpdates);
         }
 
-        private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, TrainingStatsView trainingStatsView)
+        private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, TrainingStatsDto trainingStatsView)
         {
             _logger.LogInformation("AddTrainingStats: tag = {tag}, trainingStatsView = {trainingStatsView}", tag, trainingStatsView);
             await _hubContext.Clients.Group(tag).SendAsync("AddTrainingStats", trainingStatsView);
         }
 
-        private async System.Threading.Tasks.Task SendUpdateTrainingStatsAsync(string tag, TrainingStatsView trainingStatsView)
+        private async System.Threading.Tasks.Task SendUpdateTrainingStatsAsync(string tag, TrainingStatsDto trainingStatsView)
         {
             _logger.LogInformation("UpdateTrainingStats: tag = {tag}, trainingStatsView = {trainingStatsView}", tag, trainingStatsView);
             await _hubContext.Clients.Group(tag).SendAsync("UpdateTrainingStats", trainingStatsView);

@@ -1,6 +1,6 @@
 ﻿using MongoDB.Bson;
 
-namespace ModelStoreApi.Models
+namespace ModelStoreApi.Domain
 {
     public record MetricInfo(ObjectId ModelId, string MetricName);
 }
