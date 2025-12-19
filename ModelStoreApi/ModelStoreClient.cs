@@ -249,6 +249,16 @@ namespace ModelStoreApi
             return job;
         }
 
+        public async Task<IEnumerable<Job>> GetJobsAsync()
+        {
+            var sort = Builders<Job>.Sort.Descending(j => j.DateTime);
+            var jobs = await _jobs
+                .Find(Builders<Job>.Filter.Empty)
+                .Sort(sort)
+                .ToListAsync();
+            return jobs;
+        }
+
         public void Dispose()
         {
             Dispose(true);

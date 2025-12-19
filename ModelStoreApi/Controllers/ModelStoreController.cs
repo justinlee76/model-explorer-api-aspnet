@@ -70,7 +70,7 @@ namespace ModelStoreApi.Controllers
         public async Task<ActionResult<JobResponse>> InsertJob([FromBody] JobRequest request)
         {
             Job? job = null;
-            JobError? error = null;
+            JobErrorDto? error = null;
             try
             {
                 var index = request.Task.LastIndexOf('.');
@@ -90,11 +90,7 @@ namespace ModelStoreApi.Controllers
             }
             catch (Exception ex)
             {
-                error = new JobError
-                {
-                    Exception = ex.Message,
-                    StackTrace = ex.StackTrace
-                };
+                error = new JobErrorDto(ex.Message, ex.StackTrace);
             }
 
             return new JobResponse
@@ -103,18 +99,6 @@ namespace ModelStoreApi.Controllers
                 Error = error
             };
         }
-
-        private const int decimalPlaces = 6;
-
-        private static readonly JsonSerializerOptions jsonSerializerOptions = new()
-        {
-            Converters = 
-            { 
-                new BsonDocumentConverter(decimalPlaces), 
-                new BsonValueConverter(decimalPlaces)  
-            },
-            WriteIndented = true
-        };
 
         [HttpPost]
         public async Task<ActionResult<JobDefaults>> GetJobDefaults()
@@ -127,8 +111,8 @@ namespace ModelStoreApi.Controllers
             {
 
                 task = $"{lastJob.Module}.{lastJob.Class}";
-                args = JsonSerializer.Serialize(lastJob.Args, jsonSerializerOptions);
-                kwargs = JsonSerializer.Serialize(lastJob.KWArgs, jsonSerializerOptions);
+                args = BsonConverter.Serialize(lastJob.Args, true);
+                kwargs = BsonConverter.Serialize(lastJob.KWArgs, true);
             }
             else
             {
@@ -149,6 +133,14 @@ namespace ModelStoreApi.Controllers
                     args,
                     kwargs
                 );
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<IEnumerable<JobDto>>> GetJobs()
+        {
+            var jobs = await _modelStoreClient.GetJobsAsync();
+            var jobDtos = jobs.Select(j => new JobDto(j)).ToList();
+            return jobDtos;
         }
 
         private static BsonValue ToBsonValue(JsonElement element)

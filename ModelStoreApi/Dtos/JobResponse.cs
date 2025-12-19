@@ -1,11 +1,9 @@
-﻿using ModelStoreApi.Domain;
-
-namespace ModelStoreApi.Dtos
+﻿namespace ModelStoreApi.Dtos
 {
     public class JobResponse
     {
         public string? Id { get; set; } = null!;
 
-        public JobError? Error { get; set; } = null!;
+        public JobErrorDto? Error { get; set; } = null!;
     }
 }

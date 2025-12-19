@@ -23,3 +23,7 @@ Content-Type: application/json
 }
 
 ###
+
+POST {{ModelStoreApi_HostAddress}}/ModelStore/GetJobs
+
+###
