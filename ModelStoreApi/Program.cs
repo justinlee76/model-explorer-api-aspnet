@@ -15,6 +15,7 @@ builder.Services.AddSingleton<ModelStoreClient>();
 builder.Services.AddSingleton<SubscriptionTracker<SeriesKey>>();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<ModelMonitor>();
+builder.Services.AddHostedService<JobMonitor>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp",
@@ -40,6 +41,7 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.MapHub<ModelDataHub>("/ModelDataHub");
+app.MapHub<JobHub>("/JobHub");
 app.UseCors("AllowReactApp");
 
 app.Run();

@@ -36,27 +36,27 @@ namespace ModelStoreApi.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<IEnumerable<TrainingStatsDto>>> GetTrainingStats([FromBody] string tag)
+        public async Task<ActionResult<IEnumerable<TrainingStatsDto>>> GetTrainingStats([FromBody] TrainingStatsRequest request)
         {
-            var trainingStats = await _modelStoreClient.GetTrainingStatsForTagAsync(tag);
+            var trainingStats = await _modelStoreClient.GetTrainingStatsForTagAsync(request.Tag);
             var statViews = trainingStats.Select(s => new TrainingStatsDto(s)).ToList();
             return statViews;
         }
 
         [HttpPost]
-        public async Task<ActionResult<IEnumerable<TrainingDataDto>>> GetTrainingData([FromBody] SeriesKey[] seriesKeys)
+        public async Task<ActionResult<IEnumerable<TrainingDataDto>>> GetTrainingData([FromBody] TrainingDataRequest request)
         {
-            var metricInfos = seriesKeys.Select(s => new MetricInfo(new ObjectId(s.ModelId), s.MetricName)).ToArray();
+            var metricInfos = request.SeriesKeys.Select(s => new MetricInfo(new ObjectId(s.ModelId), s.MetricName)).ToArray();
             var trainingData = await _modelStoreClient.GetTrainingDataAsync(metricInfos);
             var seriesList = trainingData.Select(d => new TrainingDataDto(d.Id.ToString(), d.MetricName, d.MetricHistory)).ToList();
             return seriesList;
         }
 
         [HttpPost]
-        public async Task<ActionResult<DeleteModelsResponse>> DeleteModels([FromBody] string[] modelIds)
+        public async Task<ActionResult<DeleteResponse>> DeleteModels([FromBody] DeleteModelsRequest request)
         {
-            var result = await _modelStoreClient.DeleteModelsAsync([.. modelIds.Select(m => new ObjectId(m))]);
-            return new DeleteModelsResponse { DeletedCount = result.DeletedCount };
+            var result = await _modelStoreClient.DeleteModelsAsync([.. request.ModelIds.Select(m => new ObjectId(m))]);
+            return new DeleteResponse(result);
         }
 
         [HttpPost]
@@ -93,11 +93,8 @@ namespace ModelStoreApi.Controllers
                 error = new JobErrorDto(ex.Message, ex.StackTrace);
             }
 
-            return new JobResponse
-            {
-                Id = job?.Id.ToString() ?? null,
-                Error = error
-            };
+            var id = job?.Id.ToString() ?? null;
+            return new JobResponse(id, error);
         }
 
         [HttpPost]
@@ -141,6 +138,22 @@ namespace ModelStoreApi.Controllers
             var jobs = await _modelStoreClient.GetJobsAsync();
             var jobDtos = jobs.Select(j => new JobDto(j)).ToList();
             return jobDtos;
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<UpdateResponse>> StopJob([FromBody] StopJobRequest request)
+        {
+            var jobId = new ObjectId(request.JobId);
+            var result = await _modelStoreClient.UpdateJobStatusAsync(jobId, JobStatus.Stopped);
+            return new UpdateResponse(result);
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<DeleteResponse>> DeleteJob([FromBody] DeleteJobRequest request)
+        {
+            var jobId = new ObjectId(request.JobId);
+            var result = await _modelStoreClient.DeleteJobAsync(jobId);
+            return new DeleteResponse(result);
         }
 
         private static BsonValue ToBsonValue(JsonElement element)

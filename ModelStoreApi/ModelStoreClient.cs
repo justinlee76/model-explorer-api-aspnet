@@ -45,7 +45,7 @@ namespace ModelStoreApi
         private readonly IMongoCollection<Model> _models;
         private readonly IMongoCollection<Domain.Task> _tasks;
         private readonly IMongoCollection<Job> _jobs;
-        private readonly IGridFSBucket _bucket;
+        private readonly GridFSBucket _bucket;
 
         public ModelStoreClient(IOptions<ModelStoreSettings> modelStoreSettings, ILogger<ModelStoreClient> logger)
         {
@@ -186,7 +186,7 @@ namespace ModelStoreApi
 
         public async Task<DeleteResult> DeleteModelsAsync(ObjectId[] modelIds)
         {
-            _logger.LogInformation("Deleting {modelIds}", string.Join(", ", modelIds));
+            LogInformation("Deleting {modelIds}", string.Join(", ", modelIds));
             var filter = Builders<Model>.Filter.In(m => m.Id, modelIds);
             var deleteResult = await _models.DeleteManyAsync(filter);
             await Parallel.ForEachAsync(modelIds, new ParallelOptions { MaxDegreeOfParallelism = 4 }, async (modelId, ct) =>
@@ -197,7 +197,7 @@ namespace ModelStoreApi
                 }
                 catch (GridFSFileNotFoundException)
                 {
-                    _logger.LogWarning("Model state for {modelId} not found", modelId);
+                    LogWarning("Model state for {modelId} not found", modelId);
                 }
             });
             return deleteResult;
@@ -205,23 +205,12 @@ namespace ModelStoreApi
 
         public async System.Threading.Tasks.Task MonitorModelsAsync(Func<ChangeStreamDocument<Model>, CancellationToken, System.Threading.Tasks.Task> action, CancellationToken cancellationToken)
         {
-            var pipeline = new EmptyPipelineDefinition<ChangeStreamDocument<Model>>()
-                .Match(change => 
-                change.OperationType == ChangeStreamOperationType.Insert || 
-                change.OperationType == ChangeStreamOperationType.Update || 
-                change.OperationType == ChangeStreamOperationType.Delete);
+            await MonitorCollectionAsync(_models, action, cancellationToken);
+        }
 
-            using var cursor = await _models.WatchAsync(
-                pipeline, 
-                new ChangeStreamOptions { FullDocument = ChangeStreamFullDocumentOption.UpdateLookup, FullDocumentBeforeChange = ChangeStreamFullDocumentBeforeChangeOption.Required }, 
-                cancellationToken);
-
-            await cursor.ForEachAsync(async change =>
-            {
-                _logger.LogInformation("Invoking method for update: {change}", change);
-                await action(change, cancellationToken);
-
-            }, cancellationToken);
+        public async System.Threading.Tasks.Task MonitorJobsAsync(Func<ChangeStreamDocument<Job>, CancellationToken, System.Threading.Tasks.Task> action, CancellationToken cancellationToken)
+        {
+            await MonitorCollectionAsync(_jobs, action, cancellationToken);
         }
 
         public async Task<List<Domain.Task>> GetTasksAsync()
@@ -257,6 +246,60 @@ namespace ModelStoreApi
                 .Sort(sort)
                 .ToListAsync();
             return jobs;
+        }
+
+        public async Task<UpdateResult> UpdateJobStatusAsync(ObjectId jobId, JobStatus status)
+        {
+            var filter = Builders<Job>.Filter.Eq(j => j.Id, jobId);
+            var update = Builders<Job>.Update.Set(j => j.Status, status);
+            return await _jobs.UpdateOneAsync(filter, update);
+        }
+
+        public async Task<DeleteResult> DeleteJobAsync(ObjectId jobId)
+        {
+            var filter = Builders<Job>.Filter.Eq(j => j.Id, jobId);
+            return await _jobs.DeleteOneAsync(filter);
+        }
+
+        private async System.Threading.Tasks.Task MonitorCollectionAsync<T>(IMongoCollection<T> collection, Func<ChangeStreamDocument<T>, CancellationToken, System.Threading.Tasks.Task> action, CancellationToken cancellationToken)
+        {
+            var pipeline = new EmptyPipelineDefinition<ChangeStreamDocument<T>>()
+                .Match(change =>
+                change.OperationType == ChangeStreamOperationType.Insert ||
+                change.OperationType == ChangeStreamOperationType.Update ||
+                change.OperationType == ChangeStreamOperationType.Delete);
+
+            using var cursor = await collection.WatchAsync(
+                pipeline,
+                new ChangeStreamOptions { FullDocument = ChangeStreamFullDocumentOption.UpdateLookup, FullDocumentBeforeChange = ChangeStreamFullDocumentBeforeChangeOption.Required },
+                cancellationToken);
+
+            await cursor.ForEachAsync(async change =>
+            {
+                LogInformation("Invoking method for update: {change}", change);
+                await action(change, cancellationToken);
+
+            }, cancellationToken);
+        }
+
+        private void LogInformation(string message, params object[] args)
+        {
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+#pragma warning disable CA2254 // Template should be a static expression
+                _logger.LogInformation(message, args);
+#pragma warning restore CA2254 // Template should be a static expression
+            }
+        }
+
+        private void LogWarning(string message, params object[] args)
+        {
+            if (_logger.IsEnabled(LogLevel.Warning))
+            {
+#pragma warning disable CA2254 // Template should be a static expression
+                _logger.LogWarning(message, args);
+#pragma warning restore CA2254 // Template should be a static expression
+            }
         }
 
         public void Dispose()

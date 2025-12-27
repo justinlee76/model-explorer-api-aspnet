@@ -8,28 +8,21 @@ using ModelStoreApi.Domain;
 
 namespace ModelStoreApi.Services
 {
-    public class ModelMonitor : BackgroundService
+    public class ModelMonitor(ModelStoreClient modelStoreClient, IHubContext<ModelDataHub> hubContext, ILogger<ModelMonitor> logger) : BackgroundService
     {
-        private readonly ModelStoreClient _modelStoreClient;
-        private readonly IHubContext<ModelDataHub> _hubContext;
-        private readonly ILogger<ModelMonitor> _logger;
+        private readonly ModelStoreClient _modelStoreClient = modelStoreClient;
+        private readonly IHubContext<ModelDataHub> _hubContext = hubContext;
+        private readonly ILogger<ModelMonitor> _logger = logger;
 
-        public ModelMonitor(ModelStoreClient modelStoreClient, IHubContext<ModelDataHub> hubContext, ILogger<ModelMonitor> logger)
+        protected override async System.Threading.Tasks.Task ExecuteAsync(CancellationToken cancellationToken)
         {
-            _modelStoreClient = modelStoreClient;
-            _hubContext = hubContext;
-            _logger = logger;
+            LogInformation("Starting monitoring of model collection");
+            await _modelStoreClient.MonitorModelsAsync(ProcessModelChangeAsync, cancellationToken);
         }
 
-        protected override async System.Threading.Tasks.Task ExecuteAsync(CancellationToken stoppingToken)
+        private async System.Threading.Tasks.Task ProcessModelChangeAsync(ChangeStreamDocument<Model> change, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Starting monitoring of model collection");
-            await _modelStoreClient.MonitorModelsAsync(ProcessModelChangeAsync, stoppingToken);
-        }
-
-        private async System.Threading.Tasks.Task ProcessModelChangeAsync(ChangeStreamDocument<Model> change, CancellationToken stoppingToken)
-        {
-            _logger.LogInformation("Processing model change: {change}", change);
+            LogInformation("Processing model change: {change}", change);
             ObjectId modelId;
             if (change.DocumentKey.TryGetValue("_id", out var bsonValue) && bsonValue.IsObjectId)
             {
@@ -39,10 +32,10 @@ namespace ModelStoreApi.Services
                 {
                     case ChangeStreamOperationType.Insert:
                         var trainingStats = await _modelStoreClient.GetTrainingStatsForModelAsync(modelId);
-                        await SendAddTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsDto(trainingStats));
+                        await SendAddTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsDto(trainingStats), cancellationToken);
                         break;
                     case ChangeStreamOperationType.Delete:
-                        await SendRemoveTrainingStatsAsync(change.FullDocumentBeforeChange.Tag, modelId.ToString());
+                        await SendRemoveTrainingStatsAsync(change.FullDocumentBeforeChange.Tag, modelId.ToString(), cancellationToken);
                         break;
                     case ChangeStreamOperationType.Update:
                         if (change.UpdateDescription != null)
@@ -73,10 +66,10 @@ namespace ModelStoreApi.Services
                                 }
                             }
 
-                            await System.Threading.Tasks.Task.WhenAll(updatesMap.Keys.Select(k => SendAddMetricDataAsync(k, updatesMap[k])));
+                            await System.Threading.Tasks.Task.WhenAll(updatesMap.Keys.Select(k => SendAddMetricDataAsync(k, updatesMap[k], cancellationToken)));
 
                             trainingStats = await _modelStoreClient.GetTrainingStatsForModelAsync(modelId);
-                            await SendUpdateTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsDto(trainingStats));
+                            await SendUpdateTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsDto(trainingStats), cancellationToken);
                         }
                         break;
                 }
@@ -95,28 +88,39 @@ namespace ModelStoreApi.Services
             metricUpdates.Add(new MetricUpdate(modelId, metricName, index, metricValue));
         }
 
-        private async System.Threading.Tasks.Task SendAddMetricDataAsync(SeriesKey seriesKey, List<MetricUpdate> metricUpdates)
+        private async System.Threading.Tasks.Task SendAddMetricDataAsync(SeriesKey seriesKey, List<MetricUpdate> metricUpdates, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("AddMetricData: seriesKey = {seriesKey}, metricUpdates = {metricUpdates}", seriesKey, metricUpdates);
-            await _hubContext.Clients.Group(seriesKey.AsString).SendAsync("AddMetricData", metricUpdates);
+            LogInformation("AddMetricData: seriesKey = {seriesKey}, metricUpdates = {metricUpdates}", seriesKey, metricUpdates);
+            await _hubContext.Clients.Group(seriesKey.AsString).SendAsync("AddMetricData", metricUpdates, cancellationToken);
         }
 
-        private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, TrainingStatsDto trainingStatsView)
+        private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, TrainingStatsDto trainingStats, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("AddTrainingStats: tag = {tag}, trainingStatsView = {trainingStatsView}", tag, trainingStatsView);
-            await _hubContext.Clients.Group(tag).SendAsync("AddTrainingStats", trainingStatsView);
+            LogInformation("AddTrainingStats: tag = {tag}, trainingStats = {trainingStats}", tag, trainingStats);
+            await _hubContext.Clients.Group(tag).SendAsync("AddTrainingStats", trainingStats, cancellationToken);
         }
 
-        private async System.Threading.Tasks.Task SendUpdateTrainingStatsAsync(string tag, TrainingStatsDto trainingStatsView)
+        private async System.Threading.Tasks.Task SendUpdateTrainingStatsAsync(string tag, TrainingStatsDto trainingStats, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("UpdateTrainingStats: tag = {tag}, trainingStatsView = {trainingStatsView}", tag, trainingStatsView);
-            await _hubContext.Clients.Group(tag).SendAsync("UpdateTrainingStats", trainingStatsView);
+            LogInformation("UpdateTrainingStats: tag = {tag}, trainingStats = {trainingStats}", tag, trainingStats);
+            await _hubContext.Clients.Group(tag).SendAsync("UpdateTrainingStats", trainingStats, cancellationToken);
         }
 
-        private async System.Threading.Tasks.Task SendRemoveTrainingStatsAsync(string tag, string modelId)
+        private async System.Threading.Tasks.Task SendRemoveTrainingStatsAsync(string tag, string modelId, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("RemoveTrainingStats: tag = {tag}, modelId = {modelId}", tag, modelId);
-            await _hubContext.Clients.Group(tag).SendAsync("RemoveTrainingStats", modelId);
+            LogInformation("RemoveTrainingStats: tag = {tag}, modelId = {modelId}", tag, modelId);
+            await _hubContext.Clients.Group(tag).SendAsync("RemoveTrainingStats", modelId, cancellationToken);
         }
+
+        private void LogInformation(string message, params object[] args)
+        {
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+#pragma warning disable CA2254 // Template should be a static expression
+                _logger.LogInformation(message, args);
+#pragma warning restore CA2254 // Template should be a static expression
+            }
+        }
+
     }
 }
