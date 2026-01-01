@@ -9,7 +9,8 @@ namespace ModelStoreApi.Domain
         Running = 1,
         Completed = 2,
         Failed = 3,
-        Stopped = 4
+        Stopping = 4,
+        Stopped = 5,
     }
 
     public class Job

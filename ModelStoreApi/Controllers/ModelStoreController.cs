@@ -2,9 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using ModelStoreApi.Domain;
 using ModelStoreApi.Dtos;
 using ModelStoreApi.JsonConverters;
-using ModelStoreApi.Services;
 using MongoDB.Bson;
-using MongoDB.Bson.IO;
 using MongoDB.Driver;
 using System.Text.Json;
 
@@ -144,7 +142,7 @@ namespace ModelStoreApi.Controllers
         public async Task<ActionResult<UpdateResponse>> StopJob([FromBody] StopJobRequest request)
         {
             var jobId = new ObjectId(request.JobId);
-            var result = await _modelStoreClient.UpdateJobStatusAsync(jobId, JobStatus.Stopped);
+            var result = await _modelStoreClient.UpdateJobStatusAsync(jobId, JobStatus.Stopping);
             return new UpdateResponse(result);
         }
 
