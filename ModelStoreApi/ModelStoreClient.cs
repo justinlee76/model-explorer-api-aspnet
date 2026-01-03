@@ -187,19 +187,45 @@ namespace ModelStoreApi
         public async Task<DeleteResult> DeleteModelsAsync(ObjectId[] modelIds)
         {
             LogInformation("Deleting {modelIds}", string.Join(", ", modelIds));
-            var filter = Builders<Model>.Filter.In(m => m.Id, modelIds);
-            var deleteResult = await _models.DeleteManyAsync(filter);
-            await Parallel.ForEachAsync(modelIds, new ParallelOptions { MaxDegreeOfParallelism = 4 }, async (modelId, ct) =>
+
+            var tasks = modelIds.Select(DeleteModelAsync);
+            var deleteResults = await System.Threading.Tasks.Task.WhenAll(tasks);
+
+            var deletedCount = deleteResults.Where(d => d.IsAcknowledged).Sum(d => d.DeletedCount);
+            var deleteResult = new DeleteResult.Acknowledged(deletedCount);
+
+            return deleteResult;
+        }
+
+        private async Task<DeleteResult> DeleteModelAsync(ObjectId modelId)
+        {
+            LogInformation("Deleting {modelId}", modelId);
+
+            var filter = Builders<Model>.Filter.Eq(m => m.Id, modelId);
+            var model = await _models.Find(filter).FirstOrDefaultAsync();
+
+            DeleteResult deleteResult = null!;
+            if (model != null)
             {
-                try
+                if (model.Status == ModelStatus.Trained)
                 {
-                    await _bucket.DeleteAsync(modelId, ct);
-                }
-                catch (GridFSFileNotFoundException)
-                {
-                    LogWarning("Model state for {modelId} not found", modelId);
-                }
-            });
+                    deleteResult = await _models.DeleteOneAsync(filter);
+
+                    try
+                    {
+                        await _bucket.DeleteAsync(modelId);
+                    }
+                    catch (GridFSFileNotFoundException)
+                    {
+                        LogWarning("Model state for {modelId} not found", modelId);
+                    }
+                } else
+                    LogInformation("Model {modelId} not deleted because it is still being trained", modelId);
+            } else
+                LogInformation("Model {modelId} not found", modelId);
+
+            deleteResult ??= new DeleteResult.Acknowledged(0);
+
             return deleteResult;
         }
 
