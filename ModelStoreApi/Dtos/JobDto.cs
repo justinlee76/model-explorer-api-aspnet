@@ -11,6 +11,7 @@ namespace ModelStoreApi.Dtos
         string Task,
         string Args,
         string KWArgs,
+        string? ModelId,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         JobErrorDto? Error
     )
@@ -23,6 +24,7 @@ namespace ModelStoreApi.Dtos
                   $"{job.Module}.{job.Class}",
                   BsonConverter.Serialize(job.Args, false),
                   BsonConverter.Serialize(job.KWArgs, false),
+                  job.ModelId?.ToString(),
                   job.Error is null ? null : new JobErrorDto(job.Error)
               )
         {

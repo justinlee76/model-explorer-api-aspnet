@@ -35,6 +35,9 @@ namespace ModelStoreApi.Domain
         [BsonElement("kwargs")]
         public BsonDocument KWArgs { get; set; } = null!;
 
+        [BsonElement("model_id")]
+        public ObjectId? ModelId { get; set; }
+
         [BsonElement("error")]
         [BsonIgnoreIfNull]
         public JobError Error { get; set; } = null!;
