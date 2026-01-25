@@ -60,7 +60,7 @@
         //    return connections;
         //}
 
-        public HashSet<T> GetSeriesForConnection(string connectionId)
+        public HashSet<T> GetKeysForConnection(string connectionId)
         {
             HashSet<T> series;
             if (!_connectionsToKeys.TryGetValue(connectionId, out series!))

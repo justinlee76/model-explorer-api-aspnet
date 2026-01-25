@@ -32,7 +32,7 @@ namespace ModelStoreApi.Hubs
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            var seriesKeys = _subscriptionTracker.GetSeriesForConnection(Context.ConnectionId);
+            var seriesKeys = _subscriptionTracker.GetKeysForConnection(Context.ConnectionId);
             await Task.WhenAll(seriesKeys.Select(UnsubscribeFromSeries));
             LogInformation("Connection {connectionId} disconnected", Context.ConnectionId);
 

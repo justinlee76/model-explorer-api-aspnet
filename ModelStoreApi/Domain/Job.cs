@@ -13,6 +13,7 @@ namespace ModelStoreApi.Domain
         Stopped = 5,
     }
 
+    [BsonIgnoreExtraElements]
     public class Job
     {
         public ObjectId Id { get; set; }
