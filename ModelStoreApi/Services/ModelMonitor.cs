@@ -40,36 +40,47 @@ namespace ModelStoreApi.Services
                     case ChangeStreamOperationType.Update:
                         if (change.UpdateDescription != null)
                         {
+                            var sendUpdate = false;
+
                             var updatesMap = new Dictionary<SeriesKey, List<MetricUpdate>>();
                             foreach (var field in change.UpdateDescription.UpdatedFields)
                             {
-
                                 var components = field.Name.Split('.');
-                                if (components.Length > 0 && components[0] == "training_history")
+                                if (components.Length > 0)
                                 {
-                                    var idStr = modelId.ToString();
-                                    if (components.Length == 3 && int.TryParse(components[2], out var index) && field.Value.IsDouble)
+                                    if (components[0] == "training_history")
                                     {
-                                        var metricName = components[1];
-                                        var metricValue = field.Value.AsDouble;
-                                        AddMetricUpdate(updatesMap, idStr, metricName, index, metricValue);
-                                    }
-                                    else if (components.Length == 1 && field.Value.IsBsonDocument)
-                                    {
-                                        foreach (var element in field.Value.AsBsonDocument.Where(e => e.Value.IsBsonArray))
+                                        var idStr = modelId.ToString();
+                                        if (components.Length == 3 && int.TryParse(components[2], out var index) && field.Value.IsDouble)
                                         {
-                                            var bsonArray = element.Value.AsBsonArray;
-                                            if (bsonArray.Count == 1 && bsonArray[0].IsDouble)
-                                                AddMetricUpdate(updatesMap, idStr, element.Name, 0, bsonArray[0].AsDouble);
+                                            var metricName = components[1];
+                                            var metricValue = field.Value.AsDouble;
+                                            AddMetricUpdate(updatesMap, idStr, metricName, index, metricValue);
+                                        }
+                                        else if (components.Length == 1 && field.Value.IsBsonDocument)
+                                        {
+                                            foreach (var element in field.Value.AsBsonDocument.Where(e => e.Value.IsBsonArray))
+                                            {
+                                                var bsonArray = element.Value.AsBsonArray;
+                                                if (bsonArray.Count == 1 && bsonArray[0].IsDouble)
+                                                    AddMetricUpdate(updatesMap, idStr, element.Name, 0, bsonArray[0].AsDouble);
+                                            }
                                         }
                                     }
+
+                                    if (components[0] == "training_history" || components[0] == "status")
+                                        sendUpdate = true;
                                 }
                             }
 
-                            await System.Threading.Tasks.Task.WhenAll(updatesMap.Keys.Select(k => SendAddMetricDataAsync(k, updatesMap[k], cancellationToken)));
+                            if (sendUpdate)
+                            {
+                                if (updatesMap.Count > 0)
+                                    await System.Threading.Tasks.Task.WhenAll(updatesMap.Keys.Select(k => SendAddMetricDataAsync(k, updatesMap[k], cancellationToken)));
 
-                            trainingStats = await _modelStoreClient.GetTrainingStatsForModelAsync(modelId);
-                            await SendUpdateTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsDto(trainingStats), cancellationToken);
+                                trainingStats = await _modelStoreClient.GetTrainingStatsForModelAsync(modelId);
+                                await SendUpdateTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsDto(trainingStats), cancellationToken);
+                            }
                         }
                         break;
                 }
@@ -91,7 +102,7 @@ namespace ModelStoreApi.Services
         private async System.Threading.Tasks.Task SendAddMetricDataAsync(SeriesKey seriesKey, List<MetricUpdate> metricUpdates, CancellationToken cancellationToken)
         {
             LogInformation("AddMetricData: seriesKey = {seriesKey}, metricUpdates = {metricUpdates}", seriesKey, metricUpdates);
-            await _hubContext.Clients.Group(seriesKey.AsString).SendAsync("AddMetricData", metricUpdates, cancellationToken);
+            await _hubContext.Clients.Group(seriesKey.ToString()).SendAsync("AddMetricData", metricUpdates, cancellationToken);
         }
 
         private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, TrainingStatsDto trainingStats, CancellationToken cancellationToken)

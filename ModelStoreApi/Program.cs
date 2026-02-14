@@ -13,6 +13,7 @@ builder.Services.AddOpenApi();
 builder.Services.Configure<ModelStoreSettings>(builder.Configuration.GetSection("ModelStore"));
 builder.Services.AddSingleton<ModelStoreClient>();
 builder.Services.AddSingleton<SubscriptionTracker<SeriesKey>>();
+builder.Services.AddSingleton<SubscriptionTracker<string>>();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<ModelMonitor>();
 builder.Services.AddHostedService<JobMonitor>();

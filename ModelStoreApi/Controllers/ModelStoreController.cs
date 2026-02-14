@@ -154,6 +154,14 @@ namespace ModelStoreApi.Controllers
             return new DeleteResponse(result);
         }
 
+        [HttpPost]
+        public async Task<ActionResult<GetJobMessagesResponse>> GetJobMessages([FromBody] GetJobMessagesRequest request)
+        {
+            var jobId = new ObjectId(request.JobId);
+            var messages = await _modelStoreClient.GetJobMessagesAsync(jobId);
+            return new GetJobMessagesResponse([.. messages]);
+        }
+
         private static BsonValue ToBsonValue(JsonElement element)
         {
             switch (element.ValueKind)

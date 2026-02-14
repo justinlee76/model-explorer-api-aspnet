@@ -2,6 +2,6 @@
 {
     public record SeriesKey(string ModelId, string MetricName)
     {
-        public string AsString => ModelId + ':' + MetricName;
+        public override string ToString() => ModelId + ':' + MetricName;
     }
 }

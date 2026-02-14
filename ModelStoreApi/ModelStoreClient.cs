@@ -186,7 +186,7 @@ namespace ModelStoreApi
 
         public async Task<DeleteResult> DeleteModelsAsync(ObjectId[] modelIds)
         {
-            LogInformation("Deleting {modelIds}", string.Join(", ", modelIds));
+            LogInformation("Deleting {ModelIds}", string.Join(", ", modelIds));
 
             var tasks = modelIds.Select(DeleteModelAsync);
             var deleteResults = await System.Threading.Tasks.Task.WhenAll(tasks);
@@ -199,7 +199,7 @@ namespace ModelStoreApi
 
         private async Task<DeleteResult> DeleteModelAsync(ObjectId modelId)
         {
-            LogInformation("Deleting {modelId}", modelId);
+            LogInformation("Deleting {ModelId}", modelId);
 
             var filter = Builders<Model>.Filter.Eq(m => m.Id, modelId);
             var model = await _models.Find(filter).FirstOrDefaultAsync();
@@ -217,12 +217,12 @@ namespace ModelStoreApi
                     }
                     catch (GridFSFileNotFoundException)
                     {
-                        LogWarning("Model state for {modelId} not found", modelId);
+                        LogWarning("Model state for {ModelId} not found", modelId);
                     }
                 } else
-                    LogInformation("Model {modelId} not deleted because it is still being trained", modelId);
+                    LogInformation("Model {ModelId} not deleted because it is still being trained", modelId);
             } else
-                LogInformation("Model {modelId} not found", modelId);
+                LogInformation("Model {ModelId} not found", modelId);
 
             deleteResult ??= new DeleteResult.Acknowledged(0);
 
@@ -287,6 +287,42 @@ namespace ModelStoreApi
             return await _jobs.DeleteOneAsync(filter);
         }
 
+        public async Task<List<string>> GetJobMessagesAsync(ObjectId jobId)
+        {
+
+            var messages = new List<string>();
+            var bsonArray = await GetJobMessageBsonArray(jobId);
+            foreach (var entry in bsonArray)
+            {
+                if (entry.IsBsonDocument && entry.AsBsonDocument.TryGetValue("message", out var message) && message.IsString)
+                    messages.Add(message.AsString);
+            }
+
+            return messages;
+        }
+
+        public async Task<string> GetJobMessageAtIndexAsync(ObjectId jobId, int index)
+        {
+            var bsonArray = await GetJobMessageBsonArray(jobId);
+            if (index >= 0 && index < bsonArray.Count)
+            {
+                var entry = bsonArray[index];
+                if (entry.IsBsonDocument && entry.AsBsonDocument.TryGetValue("message", out var message) && message.IsString)
+                    return message.AsString;
+            }
+            return string.Empty;
+        }
+
+        private async Task<BsonArray> GetJobMessageBsonArray(ObjectId jobId)
+        {
+            var jobs = _db.GetCollection<BsonDocument>("jobs");
+            var filter = Builders<BsonDocument>.Filter.Eq("_id", jobId);
+            var job = await jobs.Find(filter).FirstOrDefaultAsync();
+            if (job != null && job.TryGetValue("logs", out var bsonValue) && bsonValue.IsBsonArray)
+                return bsonValue.AsBsonArray;
+            return [];
+        }
+
         private async System.Threading.Tasks.Task MonitorCollectionAsync<T>(IMongoCollection<T> collection, Func<ChangeStreamDocument<T>, CancellationToken, System.Threading.Tasks.Task> action, CancellationToken cancellationToken)
         {
             var pipeline = new EmptyPipelineDefinition<ChangeStreamDocument<T>>()
@@ -302,7 +338,7 @@ namespace ModelStoreApi
 
             await cursor.ForEachAsync(async change =>
             {
-                LogInformation("Invoking method for update: {change}", change);
+                LogInformation("Invoking method for update to {CollectionName}", collection.CollectionNamespace.CollectionName);
                 await action(change, cancellationToken);
 
             }, cancellationToken);
