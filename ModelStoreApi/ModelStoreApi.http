@@ -1,15 +1,15 @@
 @ModelStoreApi_HostAddress = http://localhost:5071
 
-POST {{ModelStoreApi_HostAddress}}/modelstore/GetMetricNames
+GET {{ModelStoreApi_HostAddress}}/modelstore/GetMetricNames
 
 ###
 
-POST {{ModelStoreApi_HostAddress}}/modelstore/GetTags
+GET {{ModelStoreApi_HostAddress}}/modelstore/GetTags
 
 ###
 
 
-POST {{ModelStoreApi_HostAddress}}/modelstore/GetTasks
+GET {{ModelStoreApi_HostAddress}}/modelstore/GetTasks
 
 ###
 
@@ -24,6 +24,15 @@ Content-Type: application/json
 
 ###
 
-POST {{ModelStoreApi_HostAddress}}/ModelStore/GetJobs
+GET {{ModelStoreApi_HostAddress}}/ModelStore/GetJobs
+
+###
+
+GET {{ModelStoreApi_HostAddress}}/modelstore/GetJobDefaults
+
+###
+
+@tag=animals
+GET {{ModelStoreApi_HostAddress}}/modelstore/GetTrainingStats?tag={{tag}}
 
 ###

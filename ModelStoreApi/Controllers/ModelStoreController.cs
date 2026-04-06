@@ -19,24 +19,24 @@ namespace ModelStoreApi.Controllers
             _modelStoreClient = modelStoreClient;
         }
 
-        [HttpPost]
+        [HttpGet]
         public async Task<ActionResult<IEnumerable<string>>> GetTags()
         {
             var tags = await _modelStoreClient.GetTagsAsync();
             return tags;
         }
 
-        [HttpPost]
+        [HttpGet]
         public async Task<ActionResult<IEnumerable<string>>> GetMetricNames()
         {
             var metricNames = await _modelStoreClient.GetMetricNamesAsync();
             return metricNames;
         }
 
-        [HttpPost]
-        public async Task<ActionResult<IEnumerable<TrainingStatsDto>>> GetTrainingStats([FromBody] TrainingStatsRequest request)
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<TrainingStatsDto>>> GetTrainingStats(string tag)
         {
-            var trainingStats = await _modelStoreClient.GetTrainingStatsForTagAsync(request.Tag);
+            var trainingStats = await _modelStoreClient.GetTrainingStatsForTagAsync(tag);
             var statViews = trainingStats.Select(s => new TrainingStatsDto(s)).ToList();
             return statViews;
         }
@@ -57,7 +57,7 @@ namespace ModelStoreApi.Controllers
             return new DeleteResponse(result);
         }
 
-        [HttpPost]
+        [HttpGet]
         public async Task<ActionResult<IEnumerable<string>>> GetTasks()
         {
             var tasks = await _modelStoreClient.GetTasksAsync();
@@ -95,7 +95,7 @@ namespace ModelStoreApi.Controllers
             return new JobResponse(id, error);
         }
 
-        [HttpPost]
+        [HttpGet]
         public async Task<ActionResult<JobDefaults>> GetJobDefaults()
         {
             var lastJob = await _modelStoreClient.GetLastJobAsync();
@@ -130,7 +130,7 @@ namespace ModelStoreApi.Controllers
                 );
         }
 
-        [HttpPost]
+        [HttpGet]
         public async Task<ActionResult<IEnumerable<JobDto>>> GetJobs()
         {
             var jobs = await _modelStoreClient.GetJobsAsync();
@@ -146,19 +146,19 @@ namespace ModelStoreApi.Controllers
             return new UpdateResponse(result);
         }
 
-        [HttpPost]
-        public async Task<ActionResult<DeleteResponse>> DeleteJob([FromBody] DeleteJobRequest request)
+        [HttpDelete("{jobId}")]
+        public async Task<ActionResult<DeleteResponse>> DeleteJob(string jobId)
         {
-            var jobId = new ObjectId(request.JobId);
-            var result = await _modelStoreClient.DeleteJobAsync(jobId);
+            var objId = new ObjectId(jobId);
+            var result = await _modelStoreClient.DeleteJobAsync(objId);
             return new DeleteResponse(result);
         }
 
-        [HttpPost]
-        public async Task<ActionResult<GetJobMessagesResponse>> GetJobMessages([FromBody] GetJobMessagesRequest request)
+        [HttpGet]
+        public async Task<ActionResult<GetJobMessagesResponse>> GetJobMessages(string jobId)
         {
-            var jobId = new ObjectId(request.JobId);
-            var messages = await _modelStoreClient.GetJobMessagesAsync(jobId);
+            var objId = new ObjectId(jobId);
+            var messages = await _modelStoreClient.GetJobMessagesAsync(objId);
             return new GetJobMessagesResponse([.. messages]);
         }
 

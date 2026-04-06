@@ -17,17 +17,22 @@ builder.Services.AddSingleton<SubscriptionTracker<string>>();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<ModelMonitor>();
 builder.Services.AddHostedService<JobMonitor>();
-builder.Services.AddCors(options =>
+var allowOrigins = builder.Configuration.GetSection("AllowOrigins").Get<string[]>();
+if (allowOrigins != null)
 {
-    options.AddPolicy("AllowReactApp",
-        policy =>
-        {
-            policy.WithOrigins("http://localhost:5173")   // React dev server
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials(); // only if using cookies/auth
-        });
-});
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("AllowReactApp",
+            policy =>
+            {
+                policy.WithOrigins(allowOrigins)   // React dev server
+                      .AllowAnyHeader()
+                      .AllowAnyMethod()
+                      .AllowCredentials(); // only if using cookies/auth
+            });
+    });
+}
+
 
 var app = builder.Build();
 

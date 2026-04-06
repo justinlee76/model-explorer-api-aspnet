@@ -133,9 +133,10 @@ namespace ModelStoreApi
                                 { "_id", m.ModelId },
                                 { "metrics.k", m.MetricName }
                             });
-            var ifNullFallback = metricInfos.Select(m => new BsonDocument
+            var metricNames = metricInfos.Select(m => m.MetricName).Distinct();
+            var ifNullFallback = metricNames.Select(m => new BsonDocument
                                     {
-                                        { "k", m.MetricName },
+                                        { "k", m },
                                         { "v",
                                     new BsonArray() }
                                     });
