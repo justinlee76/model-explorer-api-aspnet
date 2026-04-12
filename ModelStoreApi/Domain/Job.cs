@@ -24,11 +24,8 @@ namespace ModelStoreApi.Domain
         [BsonElement("status")]
         public JobStatus Status { get; set; }
 
-        [BsonElement("module")]
-        public string Module { get; set; } = null!;
-
-        [BsonElement("class")]
-        public string Class { get; set; } = null!;
+        [BsonElement("task_id")]
+        public ObjectId TaskId { get; set; }
 
         [BsonElement("args")]
         public BsonArray Args { get; set; } = null!;

@@ -2,5 +2,5 @@
 
 namespace ModelStoreApi.Dtos
 {
-    public record JobRequest(string Task, JsonElement[] Args, Dictionary<string, JsonElement> KWArgs);
+    public record JobRequest(string TaskId, JsonElement[] Args, Dictionary<string, JsonElement> KWArgs);
 }

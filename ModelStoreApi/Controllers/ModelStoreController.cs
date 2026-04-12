@@ -58,10 +58,10 @@ namespace ModelStoreApi.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<string>>> GetTasks()
+        public async Task<ActionResult<IEnumerable<TaskDto>>> GetTasks()
         {
             var tasks = await _modelStoreClient.GetTasksAsync();
-            return tasks.Select(t => $"{t.Module}.{t.Class}").ToList();
+            return tasks.Select(t => new TaskDto(t)).ToList();
         }
 
         [HttpPost]
@@ -71,17 +71,13 @@ namespace ModelStoreApi.Controllers
             JobErrorDto? error = null;
             try
             {
-                var index = request.Task.LastIndexOf('.');
-                var taskClass = request.Task[(index + 1)..];
-                var taskModule = request.Task[..index];
                 var args = new BsonArray(request.Args.Select(ToBsonValue));
                 var kwargs = new BsonDocument();
                 foreach (var kvp in request.KWArgs)
                     kwargs.Add(kvp.Key, ToBsonValue(kvp.Value));
                 job = await _modelStoreClient.InsertJobAsync(new Job
                 {
-                    Module = taskModule,
-                    Class = taskClass,
+                    TaskId = new ObjectId(request.TaskId),
                     Args = args,
                     KWArgs = kwargs
                 });
@@ -99,32 +95,26 @@ namespace ModelStoreApi.Controllers
         public async Task<ActionResult<JobDefaults>> GetJobDefaults()
         {
             var lastJob = await _modelStoreClient.GetLastJobAsync();
-            string? task;
+            string? taskId;
             string args;
             string kwargs;
             if (lastJob != null)
             {
 
-                task = $"{lastJob.Module}.{lastJob.Class}";
+                taskId = lastJob.TaskId.ToString();
                 args = BsonConverter.Serialize(lastJob.Args, true);
                 kwargs = BsonConverter.Serialize(lastJob.KWArgs, true);
             }
             else
             {
                 var tasks = await _modelStoreClient.GetTasksAsync();
-                if (tasks.Count > 0)
-                {
-                    var firstTask = tasks.First();
-                    task = $"{firstTask.Module}.{firstTask.Class}";
-                }
-                else
-                    task = null;
+                taskId = tasks.FirstOrDefault()?.Id.ToString();
                 args = "[]";
                 kwargs = "{}";
             }
 
             return new JobDefaults(
-                    task,
+                    taskId,
                     args,
                     kwargs
                 );

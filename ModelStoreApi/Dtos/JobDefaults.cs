@@ -1,4 +1,4 @@
 ﻿namespace ModelStoreApi.Dtos
 {
-    public record JobDefaults(string? Task, string Args, string KWArgs);
+    public record JobDefaults(string? TaskId, string Args, string KWArgs);
 }

@@ -212,13 +212,16 @@ namespace ModelStoreApi
                 {
                     deleteResult = await _models.DeleteOneAsync(filter);
 
-                    try
+                    if (deleteResult.IsAcknowledged && deleteResult.DeletedCount == 1)
                     {
-                        await _bucket.DeleteAsync(modelId);
-                    }
-                    catch (GridFSFileNotFoundException)
-                    {
-                        LogWarning("Model state for {ModelId} not found", modelId);
+                        try
+                        {
+                            await _bucket.DeleteAsync(modelId);
+                        }
+                        catch (GridFSFileNotFoundException)
+                        {
+                            LogWarning("Model state for {ModelId} not found", modelId);
+                        }
                     }
                 } else
                     LogInformation("Model {ModelId} not deleted because it is still being trained", modelId);
