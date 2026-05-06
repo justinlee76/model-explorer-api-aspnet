@@ -305,23 +305,12 @@ namespace ModelStoreApi
             return messages;
         }
 
-        public async Task<string> GetJobMessageAtIndexAsync(ObjectId jobId, int index)
-        {
-            var bsonArray = await GetJobMessageBsonArray(jobId);
-            if (index >= 0 && index < bsonArray.Count)
-            {
-                var entry = bsonArray[index];
-                if (entry.IsBsonDocument && entry.AsBsonDocument.TryGetValue("message", out var message) && message.IsString)
-                    return message.AsString;
-            }
-            return string.Empty;
-        }
-
         private async Task<BsonArray> GetJobMessageBsonArray(ObjectId jobId)
         {
             var jobs = _db.GetCollection<BsonDocument>("jobs");
             var filter = Builders<BsonDocument>.Filter.Eq("_id", jobId);
-            var job = await jobs.Find(filter).FirstOrDefaultAsync();
+            var projection = Builders<BsonDocument>.Projection.Include("logs").Exclude("_id");
+            var job = await jobs.Find(filter).Project(projection).FirstOrDefaultAsync();
             if (job != null && job.TryGetValue("logs", out var bsonValue) && bsonValue.IsBsonArray)
                 return bsonValue.AsBsonArray;
             return [];

@@ -45,18 +45,24 @@ namespace ModelStoreApi.Services
                                     {
                                         if (path.Length == 2)
                                         {
-                                            if (int.TryParse(path[1], out var index))
+                                            if (int.TryParse(path[1], out var index) && updatedField.Value.IsBsonDocument && updatedField.Value.AsBsonDocument.TryGetValue("message", out var messageBson) && messageBson.IsString)
                                             {
-                                                var message = await _modelStoreClient.GetJobMessageAtIndexAsync(jobId, index);
-                                                await SendAddJobMessage(jobIdStr, index, message);
+                                                await SendAddJobMessage(jobIdStr, index, messageBson.AsString);
                                             }
                                         }
                                         else if (path.Length == 1)
                                         {
-                                            var messages = await _modelStoreClient.GetJobMessagesAsync(jobId);
-                                            for (var i = 0; i < messages.Count; i++)
+                                            if (updatedField.Value.IsBsonArray)
                                             {
-                                                await SendAddJobMessage(jobIdStr, i, messages[i]);
+                                                for (var i = 0; i < updatedField.Value.AsBsonArray.Count; i++)
+                                                {
+                                                    var messageBson = updatedField.Value.AsBsonArray[i];
+                                                    if (messageBson.IsBsonDocument && messageBson.AsBsonDocument.TryGetValue("message", out var messageValue) && messageValue.IsString)
+                                                    {
+                                                        var message = messageValue.AsString;
+                                                        await SendAddJobMessage(jobIdStr, i, message);
+                                                    }
+                                                }
                                             }
                                         }
                                     }
