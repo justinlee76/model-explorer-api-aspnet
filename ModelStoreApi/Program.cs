@@ -11,7 +11,7 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 builder.Services.Configure<ModelStoreSettings>(builder.Configuration.GetSection("ModelStore"));
-builder.Services.AddSingleton<ModelStoreClient>();
+builder.Services.AddSingleton<IModelStore, ModelStore>();
 builder.Services.AddSingleton<SubscriptionTracker<SeriesKey>>();
 builder.Services.AddSingleton<SubscriptionTracker<string>>();
 builder.Services.AddSignalR();

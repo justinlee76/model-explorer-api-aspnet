@@ -1,108 +1,49 @@
 ﻿
 using Microsoft.AspNetCore.SignalR;
 using ModelStoreApi.Hubs;
-using MongoDB.Bson;
-using MongoDB.Driver;
 using ModelStoreApi.Dtos;
 using ModelStoreApi.Domain;
 
 namespace ModelStoreApi.Services
 {
-    public class ModelMonitor(ModelStoreClient modelStoreClient, IHubContext<ModelDataHub> hubContext, ILogger<ModelMonitor> logger) : BackgroundService
+    public class ModelMonitor(IModelStore modelStore, IHubContext<ModelDataHub> hubContext, ILogger<ModelMonitor> logger) : BackgroundService
     {
-        private readonly ModelStoreClient _modelStoreClient = modelStoreClient;
+        private readonly IModelStore _modelStore = modelStore;
         private readonly IHubContext<ModelDataHub> _hubContext = hubContext;
         private readonly ILogger<ModelMonitor> _logger = logger;
 
         protected override async System.Threading.Tasks.Task ExecuteAsync(CancellationToken cancellationToken)
         {
             LogInformation("Starting monitoring of model collection");
-            await _modelStoreClient.MonitorModelsAsync(ProcessModelChangeAsync, cancellationToken);
-        }
-
-        private async System.Threading.Tasks.Task ProcessModelChangeAsync(ChangeStreamDocument<Model> change, CancellationToken cancellationToken)
-        {
-            LogInformation("Processing model change: {change}", change);
-            ObjectId modelId;
-            if (change.DocumentKey.TryGetValue("_id", out var bsonValue) && bsonValue.IsObjectId)
+            await foreach (var change in _modelStore.MonitorModelsAsync(cancellationToken))
             {
-                modelId = bsonValue.AsObjectId;
-
-                switch (change.OperationType)
+                switch (change.Kind)
                 {
-                    case ChangeStreamOperationType.Insert:
-                        var trainingStats = await _modelStoreClient.GetTrainingStatsForModelAsync(modelId);
-                        await SendAddTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsDto(trainingStats), cancellationToken);
+                    case ModelCollectionChangeKind.Added:
+                        if (change.TrainingStats != null)
+                            await SendAddTrainingStatsAsync(change.Tag, new TrainingStatsDto(change.TrainingStats), cancellationToken);
                         break;
-                    case ChangeStreamOperationType.Delete:
-                        await SendRemoveTrainingStatsAsync(change.FullDocumentBeforeChange.Tag, modelId.ToString(), cancellationToken);
+                    case ModelCollectionChangeKind.Removed:
+                        await SendRemoveTrainingStatsAsync(change.Tag, change.ModelId, cancellationToken);
                         break;
-                    case ChangeStreamOperationType.Update:
-                        if (change.UpdateDescription != null)
-                        {
-                            var sendUpdate = false;
-
-                            var updatesMap = new Dictionary<SeriesKey, List<MetricUpdate>>();
-                            foreach (var field in change.UpdateDescription.UpdatedFields)
-                            {
-                                var components = field.Name.Split('.');
-                                if (components.Length > 0)
-                                {
-                                    if (components[0] == "training_history")
-                                    {
-                                        var idStr = modelId.ToString();
-                                        if (components.Length == 3 && int.TryParse(components[2], out var index) && field.Value.IsDouble)
-                                        {
-                                            var metricName = components[1];
-                                            var metricValue = field.Value.AsDouble;
-                                            AddMetricUpdate(updatesMap, idStr, metricName, index, metricValue);
-                                        }
-                                        else if (components.Length == 1 && field.Value.IsBsonDocument)
-                                        {
-                                            foreach (var element in field.Value.AsBsonDocument.Where(e => e.Value.IsBsonArray))
-                                            {
-                                                var bsonArray = element.Value.AsBsonArray;
-                                                if (bsonArray.Count == 1 && bsonArray[0].IsDouble)
-                                                    AddMetricUpdate(updatesMap, idStr, element.Name, 0, bsonArray[0].AsDouble);
-                                            }
-                                        }
-                                    }
-
-                                    if (components[0] == "training_history" || components[0] == "status")
-                                        sendUpdate = true;
-                                }
-                            }
-
-                            if (sendUpdate)
-                            {
-                                if (updatesMap.Count > 0)
-                                    await System.Threading.Tasks.Task.WhenAll(updatesMap.Keys.Select(k => SendAddMetricDataAsync(k, updatesMap[k], cancellationToken)));
-
-                                trainingStats = await _modelStoreClient.GetTrainingStatsForModelAsync(modelId);
-                                await SendUpdateTrainingStatsAsync(change.FullDocument.Tag, new TrainingStatsDto(trainingStats), cancellationToken);
-                            }
-                        }
+                    case ModelCollectionChangeKind.Updated:
+                        if (change.MetricUpdates != null)
+                            await System.Threading.Tasks.Task.WhenAll(change.MetricUpdates.Select(m => SendAddMetricDataAsync(m, cancellationToken)));
+                        if (change.TrainingStats != null)
+                            await SendUpdateTrainingStatsAsync(change.Tag, new TrainingStatsDto(change.TrainingStats), cancellationToken);
                         break;
                 }
-
             }
         }
 
-        private static void AddMetricUpdate(Dictionary<SeriesKey, List<MetricUpdate>> updatesMap, string modelId, string metricName, int index, double metricValue)
+        private async System.Threading.Tasks.Task SendAddMetricDataAsync(ModelMetricUpdates metricUpdates, CancellationToken cancellationToken)
         {
-            var seriesKey = new SeriesKey(modelId, metricName);
-            if (!updatesMap.TryGetValue(seriesKey, out var metricUpdates))
-            {
-                metricUpdates = [];
-                updatesMap.Add(seriesKey, metricUpdates);
-            }
-            metricUpdates.Add(new MetricUpdate(modelId, metricName, index, metricValue));
-        }
-
-        private async System.Threading.Tasks.Task SendAddMetricDataAsync(SeriesKey seriesKey, List<MetricUpdate> metricUpdates, CancellationToken cancellationToken)
-        {
+            var seriesKey = new SeriesKey(metricUpdates.Metric.ModelId, metricUpdates.Metric.MetricName);
+            var updates = metricUpdates.Updates
+                .Select(u => new MetricUpdate(metricUpdates.Metric.ModelId, metricUpdates.Metric.MetricName, u.Index, u.Value))
+                .ToList();
             LogInformation("AddMetricData: seriesKey = {seriesKey}, metricUpdates = {metricUpdates}", seriesKey, metricUpdates);
-            await _hubContext.Clients.Group(seriesKey.ToString()).SendAsync("AddMetricData", metricUpdates, cancellationToken);
+            await _hubContext.Clients.Group(seriesKey.ToString()).SendAsync("AddMetricData", updates, cancellationToken);
         }
 
         private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, TrainingStatsDto trainingStats, CancellationToken cancellationToken)

@@ -1,81 +1,35 @@
-﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR;
 using ModelStoreApi.Domain;
 using ModelStoreApi.Dtos;
 using ModelStoreApi.Hubs;
-using MongoDB.Driver;
 
 namespace ModelStoreApi.Services
 {
-    public class JobMonitor(ModelStoreClient modelStoreClient, IHubContext<JobHub> hubContext, ILogger<JobMonitor> logger) : BackgroundService
+    public class JobMonitor(IModelStore modelStore, IHubContext<JobHub> hubContext, ILogger<JobMonitor> logger) : BackgroundService
     {
-        private readonly ModelStoreClient _modelStoreClient = modelStoreClient;
+        private readonly IModelStore _modelStore = modelStore;
         private readonly IHubContext<JobHub> _hubContext = hubContext;
         private readonly ILogger<JobMonitor> _logger = logger;
 
         protected override async System.Threading.Tasks.Task ExecuteAsync(CancellationToken stoppingToken)
         {
             LogInformation("Starting monitoring of job collection");
-            await _modelStoreClient.MonitorJobsAsync(ProcessJobChangeAsync, stoppingToken);
-        }
-
-        private async System.Threading.Tasks.Task ProcessJobChangeAsync(ChangeStreamDocument<Job> change, CancellationToken stoppingToken)
-        {
-            if (change.DocumentKey.TryGetValue("_id", out var bsonValue) && bsonValue.IsObjectId)
+            await foreach (var change in _modelStore.MonitorJobsAsync(stoppingToken))
             {
-                var jobId = bsonValue.AsObjectId;
-                var jobIdStr = jobId.ToString();
-                LogInformation("Processing job change for job {JobId}", jobIdStr);
-
-                switch (change.OperationType)
+                switch (change.Kind)
                 {
-                    case ChangeStreamOperationType.Insert:
-                        await SendAddJobAsync(new JobDto(change.FullDocument));
+                    case JobCollectionChangeKind.Added:
+                        if (change.Job != null)
+                            await SendAddJobAsync(new JobDto(change.Job));
                         break;
-                    case ChangeStreamOperationType.Update:
-                        if (change.FullDocument != null)
-                        {
-                            var sendJob = false;
-                            foreach (var updatedField in change.UpdateDescription.UpdatedFields)
-                            {
-                                LogInformation("Field updated for job {JobId}: {FieldName}", jobIdStr, updatedField.Name);
-                                var path = updatedField.Name.Split('.');
-                                if (path.Length > 0)
-                                {
-                                    if (path[0] == "logs")
-                                    {
-                                        if (path.Length == 2)
-                                        {
-                                            if (int.TryParse(path[1], out var index) && updatedField.Value.IsBsonDocument && updatedField.Value.AsBsonDocument.TryGetValue("message", out var messageBson) && messageBson.IsString)
-                                            {
-                                                await SendAddJobMessage(jobIdStr, index, messageBson.AsString);
-                                            }
-                                        }
-                                        else if (path.Length == 1)
-                                        {
-                                            if (updatedField.Value.IsBsonArray)
-                                            {
-                                                for (var i = 0; i < updatedField.Value.AsBsonArray.Count; i++)
-                                                {
-                                                    var messageBson = updatedField.Value.AsBsonArray[i];
-                                                    if (messageBson.IsBsonDocument && messageBson.AsBsonDocument.TryGetValue("message", out var messageValue) && messageValue.IsString)
-                                                    {
-                                                        var message = messageValue.AsString;
-                                                        await SendAddJobMessage(jobIdStr, i, message);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    else
-                                        sendJob = true;
-                                }
-                            }
-                            if (sendJob)
-                                await SendUpdateJobAsync(new JobDto(change.FullDocument));
-                        }
+                    case JobCollectionChangeKind.Updated:
+                        if (change.Messages != null)
+                            await System.Threading.Tasks.Task.WhenAll(change.Messages.Select(SendAddJobMessage));
+                        if (change.Job != null)
+                            await SendUpdateJobAsync(new JobDto(change.Job));
                         break;
-                    case ChangeStreamOperationType.Delete:
-                        await SendRemoveJobAsync(jobIdStr);
+                    case JobCollectionChangeKind.Removed:
+                        await SendRemoveJobAsync(change.JobId);
                         break;
                 }
             }
@@ -99,10 +53,10 @@ namespace ModelStoreApi.Services
             await _hubContext.Clients.All.SendAsync("RemoveJob", jobId);
         }
 
-        private async System.Threading.Tasks.Task SendAddJobMessage(string jobId, int index, string message)
+        private async System.Threading.Tasks.Task SendAddJobMessage(JobMessageChange message)
         {
-            LogInformation("AddJobMessage: {JobId}, {Index}, {Message}", jobId, index, message);
-            await _hubContext.Clients.Group(jobId).SendAsync("AddJobMessage", jobId, index, message);
+            LogInformation("AddJobMessage: {JobId}, {Index}, {Message}", message.JobId, message.Index, message.Message);
+            await _hubContext.Clients.Group(message.JobId).SendAsync("AddJobMessage", message.JobId, message.Index, message.Message);
         }
 
         private void LogInformation(string message, params object[] args)

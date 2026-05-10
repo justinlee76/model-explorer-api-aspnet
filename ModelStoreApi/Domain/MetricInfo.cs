@@ -1,6 +1,4 @@
-﻿using MongoDB.Bson;
-
 namespace ModelStoreApi.Domain
 {
-    public record MetricInfo(ObjectId ModelId, string MetricName);
+    public record MetricInfo(string ModelId, string MetricName);
 }
