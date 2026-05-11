@@ -1,6 +1,3 @@
-﻿using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-
 namespace ModelStoreApi.Domain
 {
     public enum JobStatus
@@ -13,31 +10,22 @@ namespace ModelStoreApi.Domain
         Stopped = 5,
     }
 
-    [BsonIgnoreExtraElements]
     public class Job
     {
-        public ObjectId Id { get; set; }
+        public string Id { get; set; } = null!;
 
-        [BsonElement("datetime")]
         public DateTime DateTime { get; set; }
 
-        [BsonElement("status")]
         public JobStatus Status { get; set; }
 
-        [BsonElement("task_id")]
-        public ObjectId TaskId { get; set; }
+        public string TaskId { get; set; } = null!;
 
-        [BsonElement("args")]
-        public BsonArray Args { get; set; } = null!;
+        public object[] Args { get; set; } = null!;
 
-        [BsonElement("kwargs")]
-        public BsonDocument KWArgs { get; set; } = null!;
+        public Dictionary<string, object> KWArgs { get; set; } = null!;
 
-        [BsonElement("model_id")]
-        public ObjectId? ModelId { get; set; }
+        public string? ModelId { get; set; }
 
-        [BsonElement("error")]
-        [BsonIgnoreIfNull]
         public JobError Error { get; set; } = null!;
     }
 }

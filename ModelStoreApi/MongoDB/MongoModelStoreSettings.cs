@@ -1,6 +1,6 @@
-﻿namespace ModelStoreApi
+﻿namespace ModelStoreApi.MongoDB
 {
-    public class ModelStoreSettings
+    public class MongoModelStoreSettings
     {
         public string Uri { get; set; } = null!;
         public string Database { get; set; } = null!;

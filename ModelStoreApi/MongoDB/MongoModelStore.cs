@@ -1,13 +1,17 @@
 ﻿using Microsoft.Extensions.Options;
 using ModelStoreApi.Domain;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
+using MongoDB.Bson.Serialization.Conventions;
+using MongoDB.Bson.Serialization.IdGenerators;
+using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Driver;
 using MongoDB.Driver.GridFS;
 using System.Runtime.CompilerServices;
 
-namespace ModelStoreApi
+namespace ModelStoreApi.MongoDB
 {
-    public class ModelStore : IModelStore, IDisposable
+    public class MongoModelStore : IModelStore, IDisposable
     {
         private static readonly BsonDocument s_trainingStatsProjection = new("$project",
                 new BsonDocument
@@ -39,17 +43,21 @@ namespace ModelStoreApi
                         { "status", 1 }
                     });
 
+        private static readonly object s_classMapLock = new();
+        private static bool s_classMapsRegistered;
 
         private readonly MongoClient _mongoClient;
-        private readonly ILogger<ModelStore> _logger;
+        private readonly ILogger<MongoModelStore> _logger;
         private readonly IMongoDatabase _db;
         private readonly IMongoCollection<Model> _models;
         private readonly IMongoCollection<Domain.Task> _tasks;
         private readonly IMongoCollection<Job> _jobs;
         private readonly GridFSBucket _bucket;
 
-        public ModelStore(IOptions<ModelStoreSettings> modelStoreSettings, ILogger<ModelStore> logger)
+        public MongoModelStore(IOptions<MongoModelStoreSettings> modelStoreSettings, ILogger<MongoModelStore> logger)
         {
+            RegisterDomainClassMaps();
+
             _mongoClient = new MongoClient(modelStoreSettings.Value.Uri);
             _logger = logger;
             _db = _mongoClient.GetDatabase(modelStoreSettings.Value.Database);
@@ -191,14 +199,14 @@ namespace ModelStoreApi
         {
             LogInformation("Deleting {ModelIds}", string.Join(", ", modelIds));
 
-            var tasks = modelIds.Select(m => DeleteModelAsync(new ObjectId(m)));
+            var tasks = modelIds.Select(DeleteModelAsync);
             var deleteResults = await System.Threading.Tasks.Task.WhenAll(tasks);
 
             var deletedCount = deleteResults.Where(d => d.IsAcknowledged).Sum(d => d.DeletedCount);
             return deletedCount;
         }
 
-        private async Task<DeleteResult> DeleteModelAsync(ObjectId modelId)
+        private async Task<DeleteResult> DeleteModelAsync(string modelId)
         {
             LogInformation("Deleting {ModelId}", modelId);
 
@@ -216,7 +224,7 @@ namespace ModelStoreApi
                     {
                         try
                         {
-                            await _bucket.DeleteAsync(modelId);
+                            await _bucket.DeleteAsync(new ObjectId(modelId));
                         }
                         catch (GridFSFileNotFoundException)
                         {
@@ -261,14 +269,14 @@ namespace ModelStoreApi
 
         public async Task<Job> InsertJobAsync(JobSubmission jobSubmission)
         {
-            var args = new BsonArray(jobSubmission.Args.Select(ToBsonValue));
-            var kwargs = new BsonDocument();
+            var args = jobSubmission.Args.Select(ToObject).ToArray();
+            var kwargs = new Dictionary<string, object>();
             foreach (var kvp in jobSubmission.KWArgs)
-                kwargs.Add(kvp.Key, ToBsonValue(kvp.Value));
+                kwargs.Add(kvp.Key, ToObject(kvp.Value));
 
             var job = new Job
             {
-                TaskId = new ObjectId(jobSubmission.TaskId),
+                TaskId = jobSubmission.TaskId,
                 Args = args,
                 KWArgs = kwargs
             };
@@ -302,7 +310,7 @@ namespace ModelStoreApi
 
         public async Task<long> UpdateJobStatusAsync(string jobId, JobStatus status)
         {
-            var filter = Builders<Job>.Filter.Eq(j => j.Id, new ObjectId(jobId));
+            var filter = Builders<Job>.Filter.Eq(j => j.Id, jobId);
             var update = Builders<Job>.Update.Set(j => j.Status, status);
             var result = await _jobs.UpdateOneAsync(filter, update);
             return result.IsModifiedCountAvailable ? result.ModifiedCount : 0;
@@ -310,7 +318,7 @@ namespace ModelStoreApi
 
         public async Task<long> DeleteJobAsync(string jobId)
         {
-            var filter = Builders<Job>.Filter.Eq(j => j.Id, new ObjectId(jobId));
+            var filter = Builders<Job>.Filter.Eq(j => j.Id, jobId);
             var result = await _jobs.DeleteOneAsync(filter);
             return result.IsAcknowledged ? result.DeletedCount : 0;
         }
@@ -329,39 +337,114 @@ namespace ModelStoreApi
             return messages;
         }
 
-        private static BsonValue ToBsonValue(System.Text.Json.JsonElement element)
+        private static object ToObject(System.Text.Json.JsonElement element)
         {
             switch (element.ValueKind)
             {
                 case System.Text.Json.JsonValueKind.Number:
                     if (element.TryGetInt32(out var int32Val))
-                        return new BsonInt32(int32Val);
+                        return int32Val;
                     if (element.TryGetInt64(out var int64Val))
-                        return new BsonInt64(int64Val);
+                        return int64Val;
                     if (element.TryGetDouble(out var doubleVal))
-                        return new BsonDouble(doubleVal);
+                        return doubleVal;
                     throw new NotSupportedException($"Conversion of this number not supported: {element.GetRawText()}");
                 case System.Text.Json.JsonValueKind.True:
                 case System.Text.Json.JsonValueKind.False:
-                    return new BsonBoolean(element.GetBoolean());
+                    return element.GetBoolean();
                 case System.Text.Json.JsonValueKind.String:
-                    return new BsonString(element.GetString());
+                    return element.GetString()!;
                 case System.Text.Json.JsonValueKind.Array:
-                    var array = new BsonArray();
-                    foreach (var item in element.EnumerateArray())
-                        array.Add(ToBsonValue(item));
-                    return array;
+                    return element.EnumerateArray().Select(ToObject).ToArray();
                 case System.Text.Json.JsonValueKind.Object:
-                    var doc = new BsonDocument();
+                    var doc = new Dictionary<string, object>();
                     foreach (var prop in element.EnumerateObject())
-                        doc[prop.Name] = ToBsonValue(prop.Value);
+                        doc[prop.Name] = ToObject(prop.Value);
                     return doc;
                 case System.Text.Json.JsonValueKind.Null:
                 case System.Text.Json.JsonValueKind.Undefined:
-                    return BsonNull.Value;
+                    return null!;
                 default:
                     throw new NotSupportedException($"Unsupported value for ValueKind: {element.ValueKind}");
             }
+        }
+
+        private static void RegisterDomainClassMaps()
+        {
+            lock (s_classMapLock)
+            {
+                if (s_classMapsRegistered)
+                    return;
+
+                RegisterDomainConventions();
+
+                var objectIdStringSerializer = new StringSerializer(BsonType.ObjectId);
+
+                if (!BsonClassMap.IsClassMapRegistered(typeof(ModelInfo)))
+                {
+                    BsonClassMap.RegisterClassMap<ModelInfo>(cm =>
+                    {
+                        cm.AutoMap();
+                        cm.GetMemberMap(m => m.Id)
+                            .SetSerializer(objectIdStringSerializer)
+                            .SetIdGenerator(StringObjectIdGenerator.Instance);
+                        cm.GetMemberMap(m => m.Args).SetSerializer(PlainObjectArraySerializer.Instance);
+                        cm.GetMemberMap(m => m.KWArgs).SetSerializer(PlainObjectDictionarySerializer.Instance);
+                    });
+                }
+
+                if (!BsonClassMap.IsClassMapRegistered(typeof(Job)))
+                {
+                    BsonClassMap.RegisterClassMap<Job>(cm =>
+                    {
+                        cm.AutoMap();
+                        cm.SetIgnoreExtraElements(true);
+                        cm.GetMemberMap(j => j.Id)
+                            .SetSerializer(objectIdStringSerializer)
+                            .SetIdGenerator(StringObjectIdGenerator.Instance);
+                        cm.GetMemberMap(j => j.TaskId).SetSerializer(objectIdStringSerializer);
+                        cm.GetMemberMap(j => j.Args).SetSerializer(PlainObjectArraySerializer.Instance);
+                        cm.GetMemberMap(j => j.KWArgs).SetSerializer(PlainObjectDictionarySerializer.Instance);
+                        cm.GetMemberMap(j => j.ModelId).SetSerializer(objectIdStringSerializer);
+                        cm.GetMemberMap(j => j.Error).SetIgnoreIfNull(true);
+                    });
+                }
+
+                if (!BsonClassMap.IsClassMapRegistered(typeof(Model)))
+                {
+                    BsonClassMap.RegisterClassMap<Model>(cm =>
+                    {
+                        cm.AutoMap();
+                        cm.SetIgnoreExtraElements(true);
+                    });
+                }
+
+                if (!BsonClassMap.IsClassMapRegistered(typeof(Domain.Task)))
+                {
+                    BsonClassMap.RegisterClassMap<Domain.Task>(cm =>
+                    {
+                        cm.AutoMap();
+                        cm.GetMemberMap(t => t.Id)
+                            .SetSerializer(objectIdStringSerializer)
+                            .SetIdGenerator(StringObjectIdGenerator.Instance);
+                    });
+                }
+
+                s_classMapsRegistered = true;
+            }
+        }
+
+        private static void RegisterDomainConventions()
+        {
+            var conventionPack = new ConventionPack
+            {
+                new SnakeCaseElementNameConvention()
+            };
+
+            ConventionRegistry.Register(
+                "ModelStoreApi.Domain conventions",
+                conventionPack,
+                type => type.Namespace == typeof(ModelInfo).Namespace);
         }
 
         private async Task<BsonArray> GetJobMessageBsonArray(ObjectId jobId)

@@ -1,5 +1,6 @@
 using ModelStoreApi;
 using ModelStoreApi.Hubs;
+using ModelStoreApi.MongoDB;
 using ModelStoreApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,8 +11,8 @@ builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-builder.Services.Configure<ModelStoreSettings>(builder.Configuration.GetSection("ModelStore"));
-builder.Services.AddSingleton<IModelStore, ModelStore>();
+builder.Services.Configure<MongoModelStoreSettings>(builder.Configuration.GetSection("ModelStore"));
+builder.Services.AddSingleton<IModelStore, MongoModelStore>();
 builder.Services.AddSingleton<SubscriptionTracker<SeriesKey>>();
 builder.Services.AddSingleton<SubscriptionTracker<string>>();
 builder.Services.AddSignalR();

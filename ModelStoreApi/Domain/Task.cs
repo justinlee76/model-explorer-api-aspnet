@@ -1,16 +1,11 @@
-﻿using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-
 namespace ModelStoreApi.Domain
 {
     public class Task
     {
-        public ObjectId Id { get; set; }
+        public string Id { get; set; } = null!;
 
-        [BsonElement("module")]
         public string Module { get; set; } = null!;
 
-        [BsonElement("class")]
         public string Class { get; set; } = null!;
     }
 }

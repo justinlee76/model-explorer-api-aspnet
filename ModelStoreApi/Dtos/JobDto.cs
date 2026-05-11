@@ -1,5 +1,5 @@
 ﻿using ModelStoreApi.Domain;
-using ModelStoreApi.JsonConverters;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ModelStoreApi.Dtos
@@ -18,16 +18,17 @@ namespace ModelStoreApi.Dtos
     {
         public JobDto(Job job)
             : this(
-                  job.Id.ToString(),
+                  job.Id,
                   job.DateTime,
                   job.Status.ToString(),
-                  job.TaskId.ToString(),
-                  BsonConverter.Serialize(job.Args, false),
-                  BsonConverter.Serialize(job.KWArgs, false),
-                  job.ModelId?.ToString(),
+                  job.TaskId,
+                  JsonSerializer.Serialize(job.Args),
+                  JsonSerializer.Serialize(job.KWArgs),
+                  job.ModelId,
                   job.Error is null ? null : new JobErrorDto(job.Error)
               )
         {
         }
     }
+
 }

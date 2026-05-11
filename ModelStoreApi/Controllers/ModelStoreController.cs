@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ModelStoreApi.Domain;
 using ModelStoreApi.Dtos;
-using ModelStoreApi.JsonConverters;
+using System.Text.Json;
 
 namespace ModelStoreApi.Controllers
 {
@@ -9,6 +9,11 @@ namespace ModelStoreApi.Controllers
     [Route("[controller]/[action]")]
     public class ModelStoreController : ControllerBase
     {
+        private static readonly JsonSerializerOptions s_indentedJsonSerializerOptions = new()
+        {
+            WriteIndented = true
+        };
+
         private readonly IModelStore _modelStore;
 
         public ModelStoreController(IModelStore modelStore)
@@ -75,7 +80,7 @@ namespace ModelStoreApi.Controllers
                 error = new JobErrorDto(ex.Message, ex.StackTrace);
             }
 
-            var id = job?.Id.ToString() ?? null;
+            var id = job?.Id;
             return new JobResponse(id, error);
         }
 
@@ -89,14 +94,14 @@ namespace ModelStoreApi.Controllers
             if (lastJob != null)
             {
 
-                taskId = lastJob.TaskId.ToString();
-                args = BsonConverter.Serialize(lastJob.Args, true);
-                kwargs = BsonConverter.Serialize(lastJob.KWArgs, true);
+                taskId = lastJob.TaskId;
+                args = JsonSerializer.Serialize(lastJob.Args, s_indentedJsonSerializerOptions);
+                kwargs = JsonSerializer.Serialize(lastJob.KWArgs, s_indentedJsonSerializerOptions);
             }
             else
             {
                 var tasks = await _modelStore.GetTasksAsync();
-                taskId = tasks.FirstOrDefault()?.Id.ToString();
+                taskId = tasks.FirstOrDefault()?.Id;
                 args = "[]";
                 kwargs = "{}";
             }
