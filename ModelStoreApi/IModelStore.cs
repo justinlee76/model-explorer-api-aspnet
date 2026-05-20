@@ -6,9 +6,8 @@ namespace ModelStoreApi
     {
         Task<List<string>> GetTagsAsync();
         Task<List<string>> GetMetricNamesAsync();
-        Task<List<TrainingStats>> GetTrainingStatsForTagAsync(string tag);
-        Task<TrainingStats> GetTrainingStatsForModelAsync(string modelId);
-        Task<List<TrainingData>> GetTrainingDataAsync(MetricInfo[] metricInfos);
+        Task<List<Model>> GetModelsForTagAsync(string tag);
+        Task<List<MetricHistory>> GetMetricHistoryAsync(MetricHistoryKey[] metricHistoryKeys);
         Task<long> DeleteModelsAsync(string[] modelIds);
         IAsyncEnumerable<ModelCollectionChange> MonitorModelsAsync(CancellationToken cancellationToken);
         IAsyncEnumerable<JobCollectionChange> MonitorJobsAsync(CancellationToken cancellationToken);

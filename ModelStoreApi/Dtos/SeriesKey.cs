@@ -1,4 +1,4 @@
-﻿namespace ModelStoreApi.Services
+﻿namespace ModelStoreApi.Dtos
 {
     public record SeriesKey(string ModelId, string MetricName)
     {

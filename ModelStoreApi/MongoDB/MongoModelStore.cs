@@ -13,36 +13,6 @@ namespace ModelStoreApi.MongoDB
 {
     public class MongoModelStore : IModelStore, IDisposable
     {
-        private static readonly BsonDocument s_trainingStatsProjection = new("$project",
-                new BsonDocument
-                    {
-                        { "datetime", 1 },
-                        { "_id", 1 },
-                        { "module", 1 },
-                        { "class", 1 },
-                        { "args", 1 },
-                        { "kwargs", 1 },
-                        { "tag", 1 },
-                        { "trainable_params", 1 },
-                        { "min_val_loss",
-                new BsonDocument("$min",
-                new BsonDocument("$ifNull",
-                new BsonArray
-                                {
-                                    "$training_history.val_loss",
-                                    0
-                                })) },
-                        { "max_val_accuracy",
-                new BsonDocument("$max",
-                new BsonDocument("$ifNull",
-                new BsonArray
-                                {
-                                    "$training_history.val_accuracy",
-                                    0
-                                })) },
-                        { "status", 1 }
-                    });
-
         private static readonly object s_classMapLock = new();
         private static bool s_classMapsRegistered;
 
@@ -52,6 +22,7 @@ namespace ModelStoreApi.MongoDB
         private readonly IMongoCollection<Model> _models;
         private readonly IMongoCollection<Domain.Task> _tasks;
         private readonly IMongoCollection<Job> _jobs;
+        private readonly IMongoCollection<BsonDocument> _jobsBson;
         private readonly GridFSBucket _bucket;
 
         public MongoModelStore(IOptions<MongoModelStoreSettings> modelStoreSettings, ILogger<MongoModelStore> logger)
@@ -64,6 +35,7 @@ namespace ModelStoreApi.MongoDB
             _models = _db.GetCollection<Model>(modelStoreSettings.Value.ModelCollection);
             _tasks = _db.GetCollection<Domain.Task>(modelStoreSettings.Value.TaskCollection);
             _jobs = _db.GetCollection<Job>(modelStoreSettings.Value.JobCollection);
+            _jobsBson = _db.GetCollection<BsonDocument>(modelStoreSettings.Value.JobCollection);
             _bucket = new GridFSBucket(_db);
         }
 
@@ -75,122 +47,66 @@ namespace ModelStoreApi.MongoDB
 
         public async Task<List<string>> GetMetricNamesAsync()
         {
-            PipelineDefinition<Model, BsonDocument> pipeline = new BsonDocument[]
-            {
-                new("$project",
-                new BsonDocument
-                    {
-                        { "_id", 0 },
-                        { "metrics",
-                new BsonDocument("$objectToArray", "$training_history") }
-                    }),
-                new("$group",
-                new BsonDocument("_id", "$metrics.k")),
-                new("$unwind",
-                new BsonDocument("path", "$_id")),
-                new("$project",
-                new BsonDocument
-                    {
-                        { "metric_name", "$_id" },
-                        { "_id", 0 }
-                    })
-            };
+            var docs = await _models.Aggregate()
+                .Project(new BsonDocument
+                {
+                    { "_id", 0 },
+                    { "history", new BsonDocument("$objectToArray", "$training_history") }
+                })
+                .Unwind("history")
+                .Group(new BsonDocument("_id", "$history.k"))
+                .Project(new BsonDocument
+                {
+                    { "metric_name", "$_id" },
+                    { "_id", 0 }
+                })
+                .Sort(new BsonDocument("metric_name", 1))
+                .ToListAsync();
 
-            var docs = await _models.Aggregate(pipeline).ToListAsync();
             var metricNames = docs.Select(d => d["metric_name"].AsString).ToList();
 
             return metricNames;
         }
 
-        public async Task<List<TrainingStats>> GetTrainingStatsForTagAsync(string tag)
+        public async Task<List<Model>> GetModelsForTagAsync(string tag)
         {
-            PipelineDefinition<Model, TrainingStats> pipeline = new BsonDocument[]
-            {
-                new("$match",
-                new BsonDocument("tag", tag)),
-                s_trainingStatsProjection
-            };
-
-            var trainingStats = await _models.Aggregate(pipeline).ToListAsync();
-
-            return trainingStats;
+            if (string.IsNullOrEmpty(tag))
+                return [];
+                
+            var models = await _models.Find(m => m.Tag == tag).ToListAsync();
+            
+            return models;
         }
 
-        public async Task<TrainingStats> GetTrainingStatsForModelAsync(string modelId)
+        public async Task<List<MetricHistory>> GetMetricHistoryAsync(MetricHistoryKey[] metricHistoryKeys)
         {
-            var objectId = new ObjectId(modelId);
-            PipelineDefinition<Model, TrainingStats> pipeline = new BsonDocument[]
-            {
-                new("$match",
-                new BsonDocument("_id", objectId)),
-                s_trainingStatsProjection
-            };
+            if (metricHistoryKeys.Length == 0)
+                return [];
+                
+            var filters = metricHistoryKeys.Select(m => Builders<BsonDocument>.Filter.And(
+                Builders<BsonDocument>.Filter.Eq("_id", new ObjectId(m.ModelId)),
+                Builders<BsonDocument>.Filter.Eq("history.k", m.MetricName)));
 
-            var list = await _models.Aggregate(pipeline).ToListAsync();
+            var metricFilter = Builders<BsonDocument>.Filter.Or(filters);
 
-            TrainingStats trainingStats = null!;
-
-            if (list.Count > 0)
-                trainingStats = list[0];
-
-            return trainingStats;
-        }
-
-        public async Task<List<TrainingData>> GetTrainingDataAsync(MetricInfo[] metricInfos)
-        {
-            var filter = metricInfos.Select(m => new BsonDocument
-                            {
-                                { "_id", new ObjectId(m.ModelId) },
-                                { "metrics.k", m.MetricName }
-                            });
-            var metricNames = metricInfos.Select(m => m.MetricName).Distinct();
-            var ifNullFallback = metricNames.Select(m => new BsonDocument
-                                    {
-                                        { "k", m },
-                                        { "v",
-                                    new BsonArray() }
-                                    });
-            PipelineDefinition<Model, TrainingData> pipeline = new BsonDocument[]
-            {
-                new("$project",
-                new BsonDocument
-                    {
-                        { "_id", 1 },
-                        { "module", 1 },
-                        { "class", 1 },
-                        { "args", 1 },
-                        { "kwargs", 1 },
-                        { "metrics",
-                new BsonDocument("$ifNull",
-                new BsonArray
-                            {
-                                new BsonDocument("$objectToArray", "$training_history"),
-                                new BsonArray(ifNullFallback)
-                            }) }
-                    }),
-                new("$unwind",
-                new BsonDocument
-                    {
-                        { "path", "$metrics" },
-                        { "preserveNullAndEmptyArrays", true }
-                    }),
-                new("$match",
-                new BsonDocument("$or",
-                new BsonArray(filter))),
-                new("$project",
-                new BsonDocument
-                    {
-                        { "_id", 1 },
-                        { "module", 1 },
-                        { "class", 1 },
-                        { "args", 1 },
-                        { "kwargs", 1 },
-                        { "metric_name", "$metrics.k" },
-                        { "metric_history", "$metrics.v" }
-                    })
-            };
-
-            var trainingData = await _models.Aggregate(pipeline).ToListAsync();
+            var trainingData = await _models.Aggregate()
+                .Project(new BsonDocument
+                {
+                    { "_id", 1 },
+                    { "history", new BsonDocument("$objectToArray", "$training_history") }
+                })
+                .Unwind("history", new AggregateUnwindOptions<BsonDocument>
+                {
+                    PreserveNullAndEmptyArrays = true
+                })
+                .Match(metricFilter)
+                .Project<MetricHistory>(new BsonDocument
+                {
+                    { "_id", 1 },
+                    { "metric_name", "$history.k" },
+                    { "values", "$history.v" }
+                })
+                .ToListAsync();
 
             return trainingData;
         }
@@ -243,9 +159,9 @@ namespace ModelStoreApi.MongoDB
 
         public async IAsyncEnumerable<ModelCollectionChange> MonitorModelsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            await foreach (var change in MonitorCollectionAsync(_models, cancellationToken))
+            await foreach (var change in MonitorCollectionAsync(_models, requireFullDocumentBeforeChange: true, cancellationToken))
             {
-                var modelChange = await CreateModelCollectionChangeAsync(change);
+                var modelChange = CreateModelCollectionChange(change);
                 if (modelChange != null)
                     yield return modelChange;
             }
@@ -253,7 +169,7 @@ namespace ModelStoreApi.MongoDB
 
         public async IAsyncEnumerable<JobCollectionChange> MonitorJobsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            await foreach (var change in MonitorCollectionAsync(_jobs, cancellationToken))
+            await foreach (var change in MonitorCollectionAsync(_jobs, requireFullDocumentBeforeChange: false, cancellationToken))
             {
                 var jobChange = CreateJobCollectionChange(change);
                 if (jobChange != null)
@@ -278,11 +194,10 @@ namespace ModelStoreApi.MongoDB
             {
                 TaskId = jobSubmission.TaskId,
                 Args = args,
-                KWArgs = kwargs
+                KWArgs = kwargs,
+                DateTime = DateTime.UtcNow,
+                Status = JobStatus.Submitted
             };
-
-            job.DateTime = DateTime.UtcNow;
-            job.Status = JobStatus.Submitted;
             await _jobs.InsertOneAsync(job);
             return job;
         }
@@ -380,11 +295,12 @@ namespace ModelStoreApi.MongoDB
 
                 var objectIdStringSerializer = new StringSerializer(BsonType.ObjectId);
 
-                if (!BsonClassMap.IsClassMapRegistered(typeof(ModelInfo)))
+                if (!BsonClassMap.IsClassMapRegistered(typeof(Model)))
                 {
-                    BsonClassMap.RegisterClassMap<ModelInfo>(cm =>
+                    BsonClassMap.RegisterClassMap<Model>(cm =>
                     {
                         cm.AutoMap();
+                        cm.SetIgnoreExtraElements(true);
                         cm.GetMemberMap(m => m.Id)
                             .SetSerializer(objectIdStringSerializer)
                             .SetIdGenerator(StringObjectIdGenerator.Instance);
@@ -410,21 +326,23 @@ namespace ModelStoreApi.MongoDB
                     });
                 }
 
-                if (!BsonClassMap.IsClassMapRegistered(typeof(Model)))
-                {
-                    BsonClassMap.RegisterClassMap<Model>(cm =>
-                    {
-                        cm.AutoMap();
-                        cm.SetIgnoreExtraElements(true);
-                    });
-                }
-
                 if (!BsonClassMap.IsClassMapRegistered(typeof(Domain.Task)))
                 {
                     BsonClassMap.RegisterClassMap<Domain.Task>(cm =>
                     {
                         cm.AutoMap();
                         cm.GetMemberMap(t => t.Id)
+                            .SetSerializer(objectIdStringSerializer)
+                            .SetIdGenerator(StringObjectIdGenerator.Instance);
+                    });
+                }
+
+                if (!BsonClassMap.IsClassMapRegistered(typeof(MetricHistory)))
+                {
+                    BsonClassMap.RegisterClassMap<MetricHistory>(cm =>
+                    {
+                        cm.AutoMap();
+                        cm.GetMemberMap(m => m.Id)
                             .SetSerializer(objectIdStringSerializer)
                             .SetIdGenerator(StringObjectIdGenerator.Instance);
                     });
@@ -444,15 +362,14 @@ namespace ModelStoreApi.MongoDB
             ConventionRegistry.Register(
                 "ModelStoreApi.Domain conventions",
                 conventionPack,
-                type => type.Namespace == typeof(ModelInfo).Namespace);
+                type => type.Namespace == typeof(Model).Namespace);
         }
 
         private async Task<BsonArray> GetJobMessageBsonArray(ObjectId jobId)
         {
-            var jobs = _db.GetCollection<BsonDocument>("jobs");
             var filter = Builders<BsonDocument>.Filter.Eq("_id", jobId);
             var projection = Builders<BsonDocument>.Projection.Include("logs").Exclude("_id");
-            var job = await jobs.Find(filter).Project(projection).FirstOrDefaultAsync();
+            var job = await _jobsBson.Find(filter).Project(projection).FirstOrDefaultAsync();
             if (job != null && job.TryGetValue("logs", out var bsonValue) && bsonValue.IsBsonArray)
                 return bsonValue.AsBsonArray;
             return [];
@@ -460,6 +377,7 @@ namespace ModelStoreApi.MongoDB
 
         private async IAsyncEnumerable<ChangeStreamDocument<T>> MonitorCollectionAsync<T>(
             IMongoCollection<T> collection,
+            bool requireFullDocumentBeforeChange,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             var pipeline = new EmptyPipelineDefinition<ChangeStreamDocument<T>>()
@@ -468,46 +386,90 @@ namespace ModelStoreApi.MongoDB
                 change.OperationType == ChangeStreamOperationType.Update ||
                 change.OperationType == ChangeStreamOperationType.Delete);
 
-            using var cursor = await collection.WatchAsync(
-                pipeline,
-                new ChangeStreamOptions { FullDocument = ChangeStreamFullDocumentOption.UpdateLookup, FullDocumentBeforeChange = ChangeStreamFullDocumentBeforeChangeOption.Required },
-                cancellationToken);
-
-            await foreach (var change in cursor.ToAsyncEnumerable().WithCancellation(cancellationToken))
+            var options = new ChangeStreamOptions
             {
-                LogInformation("Processing update to {CollectionName}", collection.CollectionNamespace.CollectionName);
-                yield return change;
+                FullDocument = ChangeStreamFullDocumentOption.UpdateLookup,
+                FullDocumentBeforeChange = requireFullDocumentBeforeChange
+                    ? ChangeStreamFullDocumentBeforeChangeOption.Required
+                    : ChangeStreamFullDocumentBeforeChangeOption.Off
+            };
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                IChangeStreamCursor<ChangeStreamDocument<T>> cursor;
+                try
+                {
+                    cursor = await collection.WatchAsync(pipeline, options, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    yield break;
+                }
+                catch (MongoException ex)
+                {
+                    LogWarning("Change stream for {CollectionName} failed and will be restarted: {Message}", collection.CollectionNamespace.CollectionName, ex.Message);
+                    await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                    continue;
+                }
+
+                using (cursor)
+                {
+                    var restart = false;
+                    while (!cancellationToken.IsCancellationRequested && !restart)
+                    {
+                        IEnumerable<ChangeStreamDocument<T>> changes;
+                        try
+                        {
+                            if (!await cursor.MoveNextAsync(cancellationToken))
+                                break;
+
+                            changes = cursor.Current;
+                        }
+                        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                        {
+                            yield break;
+                        }
+                        catch (MongoException ex)
+                        {
+                            LogWarning("Change stream for {CollectionName} failed and will be restarted: {Message}", collection.CollectionNamespace.CollectionName, ex.Message);
+                            await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                            restart = true;
+                            continue;
+                        }
+
+                        foreach (var change in changes)
+                        {
+                            LogInformation("Processing update to {CollectionName}", collection.CollectionNamespace.CollectionName);
+                            yield return change;
+                        }
+                    }
+                }
             }
         }
 
-        private async Task<ModelCollectionChange?> CreateModelCollectionChangeAsync(ChangeStreamDocument<Model> change)
+        private ModelCollectionChange? CreateModelCollectionChange(ChangeStreamDocument<Model> change)
         {
             LogInformation("Processing model change: {change}", change);
             if (!TryGetDocumentId(change, out var modelId))
                 return null;
 
             var modelIdStr = modelId.ToString();
-            switch (change.OperationType)
+            return change.OperationType switch
             {
-                case ChangeStreamOperationType.Insert:
-                    var insertedStats = await GetTrainingStatsForModelAsync(modelIdStr);
-                    return new ModelCollectionChange(ModelCollectionChangeKind.Added, modelIdStr, change.FullDocument.Tag, insertedStats);
-                case ChangeStreamOperationType.Delete:
-                    return new ModelCollectionChange(ModelCollectionChangeKind.Removed, modelIdStr, change.FullDocumentBeforeChange.Tag);
-                case ChangeStreamOperationType.Update:
-                    return await CreateModelUpdateCollectionChangeAsync(change, modelIdStr);
-                default:
-                    return null;
-            }
+                ChangeStreamOperationType.Insert => new ModelCollectionChange(ModelCollectionChangeKind.Added, modelIdStr, change.FullDocument.Tag, change.FullDocument),
+                ChangeStreamOperationType.Delete => new ModelCollectionChange(ModelCollectionChangeKind.Removed, modelIdStr, change.FullDocumentBeforeChange.Tag),
+                ChangeStreamOperationType.Update => CreateModelUpdateCollectionChange(change, modelIdStr),
+                _ => null,
+            };
         }
 
-        private async Task<ModelCollectionChange?> CreateModelUpdateCollectionChangeAsync(ChangeStreamDocument<Model> change, string modelId)
+        private static ModelCollectionChange? CreateModelUpdateCollectionChange(ChangeStreamDocument<Model> change, string modelId)
         {
             if (change.UpdateDescription == null)
                 return null;
 
             var sendUpdate = false;
-            var updatesMap = new Dictionary<MetricInfo, List<MetricValueUpdate>>();
+            var updatesMap = new Dictionary<MetricHistoryKey, List<MetricValueUpdate>>();
             foreach (var field in change.UpdateDescription.UpdatedFields)
             {
                 var components = field.Name.Split('.');
@@ -531,14 +493,13 @@ namespace ModelStoreApi.MongoDB
                     }
                 }
 
-                if (components[0] == "training_history" || components[0] == "status")
+                if (components[0] == "training_history" || components[0] == "metrics" || components[0] == "status")
                     sendUpdate = true;
             }
 
             if (!sendUpdate)
                 return null;
 
-            var trainingStats = await GetTrainingStatsForModelAsync(modelId);
             var metricUpdates = updatesMap
                 .Select(kvp => new ModelMetricUpdates(kvp.Key, kvp.Value))
                 .ToList();
@@ -546,17 +507,17 @@ namespace ModelStoreApi.MongoDB
                 ModelCollectionChangeKind.Updated,
                 modelId,
                 change.FullDocument.Tag,
-                trainingStats,
+                change.FullDocument,
                 metricUpdates);
         }
 
-        private static void AddMetricUpdate(Dictionary<MetricInfo, List<MetricValueUpdate>> updatesMap, string modelId, string metricName, int index, double metricValue)
+        private static void AddMetricUpdate(Dictionary<MetricHistoryKey, List<MetricValueUpdate>> updatesMap, string modelId, string metricName, int index, double metricValue)
         {
-            var metricInfo = new MetricInfo(modelId, metricName);
-            if (!updatesMap.TryGetValue(metricInfo, out var metricUpdates))
+            var key = new MetricHistoryKey(modelId, metricName);
+            if (!updatesMap.TryGetValue(key, out var metricUpdates))
             {
                 metricUpdates = [];
-                updatesMap.Add(metricInfo, metricUpdates);
+                updatesMap.Add(key, metricUpdates);
             }
 
             metricUpdates.Add(new MetricValueUpdate(index, metricValue));
@@ -570,17 +531,13 @@ namespace ModelStoreApi.MongoDB
             var jobIdStr = jobId.ToString();
             LogInformation("Processing job change for job {JobId}", jobIdStr);
 
-            switch (change.OperationType)
+            return change.OperationType switch
             {
-                case ChangeStreamOperationType.Insert:
-                    return new JobCollectionChange(JobCollectionChangeKind.Added, jobIdStr, change.FullDocument);
-                case ChangeStreamOperationType.Update:
-                    return CreateJobUpdateCollectionChange(change, jobIdStr);
-                case ChangeStreamOperationType.Delete:
-                    return new JobCollectionChange(JobCollectionChangeKind.Removed, jobIdStr);
-                default:
-                    return null;
-            }
+                ChangeStreamOperationType.Insert => new JobCollectionChange(JobCollectionChangeKind.Added, jobIdStr, change.FullDocument),
+                ChangeStreamOperationType.Update => CreateJobUpdateCollectionChange(change, jobIdStr),
+                ChangeStreamOperationType.Delete => new JobCollectionChange(JobCollectionChangeKind.Removed, jobIdStr),
+                _ => null,
+            };
         }
 
         private JobCollectionChange? CreateJobUpdateCollectionChange(ChangeStreamDocument<Job> change, string jobId)

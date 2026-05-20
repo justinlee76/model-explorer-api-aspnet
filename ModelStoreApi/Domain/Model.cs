@@ -1,15 +1,31 @@
 namespace ModelStoreApi.Domain
 {
-    public class Model: ModelInfo
+    public enum ModelStatus
     {
-        public string Desc { get; set; } = null!;
+        Training = 0,
+        Trained = 1,
+    }
 
+    public class Model
+    {
+        public DateTime DateTime { get; set; }
+
+        public string Id { get; set; } = null!;
+        
+        public string Class { get; set; } = null!;
+
+        public string Module { get; set; } = null!;
+
+        public object[] Args { get; set; } = null!;
+
+        public Dictionary<string, object> KWArgs { get; set; } = null!;
+
+        public string Tag { get; set; } = null!;
+
+        public ModelStatus Status { get; set; }
+        
         public int TrainableParams { get; set; }
 
-        public int NonTrainableParams { get; set; }
-
-        public int TotalParams {  get; set; }
-
-        public Dictionary<string, double[]> TrainingHistory { get; set; } = null!;
+        public MetricSummary? Metrics { get; set; }
     }
 }

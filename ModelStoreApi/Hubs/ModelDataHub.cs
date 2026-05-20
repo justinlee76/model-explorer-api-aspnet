@@ -1,4 +1,5 @@
-﻿using ModelStoreApi.Services;
+﻿using ModelStoreApi.Dtos;
+using ModelStoreApi.Services;
 
 namespace ModelStoreApi.Hubs
 {

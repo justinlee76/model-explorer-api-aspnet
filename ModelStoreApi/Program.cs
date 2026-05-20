@@ -1,4 +1,5 @@
 using ModelStoreApi;
+using ModelStoreApi.Dtos;
 using ModelStoreApi.Hubs;
 using ModelStoreApi.MongoDB;
 using ModelStoreApi.Services;

@@ -20,8 +20,8 @@ namespace ModelStoreApi.Services
                 switch (change.Kind)
                 {
                     case ModelCollectionChangeKind.Added:
-                        if (change.TrainingStats != null)
-                            await SendAddTrainingStatsAsync(change.Tag, new TrainingStatsDto(change.TrainingStats), cancellationToken);
+                        if (change.Model != null)
+                            await SendAddTrainingStatsAsync(change.Tag, new ModelDto(change.Model), cancellationToken);
                         break;
                     case ModelCollectionChangeKind.Removed:
                         await SendRemoveTrainingStatsAsync(change.Tag, change.ModelId, cancellationToken);
@@ -29,8 +29,8 @@ namespace ModelStoreApi.Services
                     case ModelCollectionChangeKind.Updated:
                         if (change.MetricUpdates != null)
                             await System.Threading.Tasks.Task.WhenAll(change.MetricUpdates.Select(m => SendAddMetricDataAsync(m, cancellationToken)));
-                        if (change.TrainingStats != null)
-                            await SendUpdateTrainingStatsAsync(change.Tag, new TrainingStatsDto(change.TrainingStats), cancellationToken);
+                        if (change.Model != null)
+                            await SendUpdateTrainingStatsAsync(change.Tag, new ModelDto(change.Model), cancellationToken);
                         break;
                 }
             }
@@ -46,13 +46,13 @@ namespace ModelStoreApi.Services
             await _hubContext.Clients.Group(seriesKey.ToString()).SendAsync("AddMetricData", updates, cancellationToken);
         }
 
-        private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, TrainingStatsDto trainingStats, CancellationToken cancellationToken)
+        private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, ModelDto trainingStats, CancellationToken cancellationToken)
         {
             LogInformation("AddTrainingStats: tag = {tag}, trainingStats = {trainingStats}", tag, trainingStats);
             await _hubContext.Clients.Group(tag).SendAsync("AddTrainingStats", trainingStats, cancellationToken);
         }
 
-        private async System.Threading.Tasks.Task SendUpdateTrainingStatsAsync(string tag, TrainingStatsDto trainingStats, CancellationToken cancellationToken)
+        private async System.Threading.Tasks.Task SendUpdateTrainingStatsAsync(string tag, ModelDto trainingStats, CancellationToken cancellationToken)
         {
             LogInformation("UpdateTrainingStats: tag = {tag}, trainingStats = {trainingStats}", tag, trainingStats);
             await _hubContext.Clients.Group(tag).SendAsync("UpdateTrainingStats", trainingStats, cancellationToken);

@@ -9,12 +9,12 @@ namespace ModelStoreApi.Domain
 
     public record MetricValueUpdate(int Index, double Value);
 
-    public record ModelMetricUpdates(MetricInfo Metric, IReadOnlyList<MetricValueUpdate> Updates);
+    public record ModelMetricUpdates(MetricHistoryKey Metric, IReadOnlyList<MetricValueUpdate> Updates);
 
     public record ModelCollectionChange(
         ModelCollectionChangeKind Kind,
         string ModelId,
         string Tag,
-        TrainingStats? TrainingStats = null,
+        Model? Model = null,
         IReadOnlyList<ModelMetricUpdates>? MetricUpdates = null);
 }

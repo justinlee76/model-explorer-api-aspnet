@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ModelStoreApi.Domain;
 using ModelStoreApi.Dtos;
+using ModelStoreApi.Services;
 using System.Text.Json;
 
 namespace ModelStoreApi.Controllers
@@ -36,20 +37,77 @@ namespace ModelStoreApi.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TrainingStatsDto>>> GetTrainingStats(string tag)
+        public async Task<ActionResult<IEnumerable<ModelDto>>> GetTrainingStats(string tag)
         {
-            var trainingStats = await _modelStore.GetTrainingStatsForTagAsync(tag);
-            var statViews = trainingStats.Select(s => new TrainingStatsDto(s)).ToList();
+            var trainingStats = await _modelStore.GetModelsForTagAsync(tag);
+            var statViews = trainingStats.Select(s => new ModelDto(s)).ToList();
             return statViews;
         }
 
         [HttpPost]
-        public async Task<ActionResult<IEnumerable<TrainingDataDto>>> GetTrainingData([FromBody] TrainingDataRequest request)
+        public async Task<ActionResult<IEnumerable<MetricHistoryDto>>> GetTrainingData([FromBody] MetricHistoryRequest? request)
         {
-            var metricInfos = request.SeriesKeys.Select(s => new MetricInfo(s.ModelId, s.MetricName)).ToArray();
-            var trainingData = await _modelStore.GetTrainingDataAsync(metricInfos);
-            var seriesList = trainingData.Select(d => new TrainingDataDto(d.Id.ToString(), d.MetricName, d.MetricHistory)).ToList();
+            if (!TryValidateMetricHistoryRequest(request, out var errorMessage))
+                return BadRequest(errorMessage);
+
+            var seriesKeys = request!.SeriesKeys!;
+            var keys = seriesKeys.Select(s => new MetricHistoryKey(s.ModelId, s.MetricName)).ToArray();
+            var trainingData = await _modelStore.GetMetricHistoryAsync(keys);
+            var dict = trainingData.ToDictionary(d => new SeriesKey(d.Id, d.MetricName));
+            var histories = new List<MetricHistory>();
+            foreach (var seriesKey in seriesKeys)
+            {
+                if (dict.TryGetValue(seriesKey, out var history))
+                {
+                    histories.Add(history);
+                }
+                else
+                {
+                    histories.Add(new MetricHistory { Id = seriesKey.ModelId, MetricName = seriesKey.MetricName, Values = [] });
+                }
+            }
+            var seriesList = histories.Select(d => new MetricHistoryDto(d.Id, d.MetricName, d.Values)).ToList();
             return seriesList;
+        }
+
+        private static bool TryValidateMetricHistoryRequest(MetricHistoryRequest? request, out string errorMessage)
+        {
+            if (request is null)
+            {
+                errorMessage = "Request body is required.";
+                return false;
+            }
+
+            if (request.SeriesKeys is null)
+            {
+                errorMessage = "seriesKeys is required.";
+                return false;
+            }
+
+            for (var i = 0; i < request.SeriesKeys.Length; i++)
+            {
+                var seriesKey = request.SeriesKeys[i];
+                if (seriesKey is null)
+                {
+                    errorMessage = $"seriesKeys[{i}] is required.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(seriesKey.ModelId))
+                {
+                    errorMessage = $"seriesKeys[{i}].modelId is required.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(seriesKey.MetricName))
+                {
+                    errorMessage = $"seriesKeys[{i}].metricName is required.";
+                    return false;
+                }
+            }
+
+            errorMessage = string.Empty;
+            return true;
         }
 
         [HttpPost]
