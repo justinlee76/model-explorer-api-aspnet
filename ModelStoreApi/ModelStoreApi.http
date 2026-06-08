@@ -1,27 +1,27 @@
 @ModelStoreApi_HostAddress = http://localhost:5071
 
-GET {{ModelStoreApi_HostAddress}}/modelstore/GetMetricNames
+GET {{ModelStoreApi_HostAddress}}/api/metric-names
 
 ###
 
-GET {{ModelStoreApi_HostAddress}}/modelstore/GetTags
+GET {{ModelStoreApi_HostAddress}}/api/tags
 
 ###
 
 
-GET {{ModelStoreApi_HostAddress}}/modelstore/GetTasks
+GET {{ModelStoreApi_HostAddress}}/api/tasks
 
 ###
 
-GET {{ModelStoreApi_HostAddress}}/ModelStore/GetJobs
+GET {{ModelStoreApi_HostAddress}}/api/jobs
 
 ###
 
-GET {{ModelStoreApi_HostAddress}}/modelstore/GetJobDefaults
+GET {{ModelStoreApi_HostAddress}}/api/job-defaults
 
 ###
 
 @tag=animals
-GET {{ModelStoreApi_HostAddress}}/modelstore/GetTrainingStats?tag={{tag}}
+GET {{ModelStoreApi_HostAddress}}/api/models?tag={{tag}}
 
 ###

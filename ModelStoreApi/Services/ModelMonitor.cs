@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.SignalR;
 using ModelStoreApi.Hubs;
 using ModelStoreApi.Dtos;
+using ModelStoreApi.Dtos.SignalR;
 using ModelStoreApi.Domain;
 
 namespace ModelStoreApi.Services
@@ -21,7 +22,7 @@ namespace ModelStoreApi.Services
                 {
                     case ModelCollectionChangeKind.Added:
                         if (change.Model != null)
-                            await SendAddTrainingStatsAsync(change.Tag, new ModelDto(change.Model), cancellationToken);
+                            await SendAddTrainingStatsAsync(change.Tag, ModelData.FromDomain(change.Model), cancellationToken);
                         break;
                     case ModelCollectionChangeKind.Removed:
                         await SendRemoveTrainingStatsAsync(change.Tag, change.ModelId, cancellationToken);
@@ -30,7 +31,7 @@ namespace ModelStoreApi.Services
                         if (change.MetricUpdates != null)
                             await System.Threading.Tasks.Task.WhenAll(change.MetricUpdates.Select(m => SendAddMetricDataAsync(m, cancellationToken)));
                         if (change.Model != null)
-                            await SendUpdateTrainingStatsAsync(change.Tag, new ModelDto(change.Model), cancellationToken);
+                            await SendUpdateTrainingStatsAsync(change.Tag, ModelData.FromDomain(change.Model), cancellationToken);
                         break;
                 }
             }
@@ -38,7 +39,7 @@ namespace ModelStoreApi.Services
 
         private async System.Threading.Tasks.Task SendAddMetricDataAsync(ModelMetricUpdates metricUpdates, CancellationToken cancellationToken)
         {
-            var seriesKey = new SeriesKey(metricUpdates.Metric.ModelId, metricUpdates.Metric.MetricName);
+            var seriesKey = new SeriesKey { Id = metricUpdates.Metric.ModelId, MetricName = metricUpdates.Metric.MetricName };
             var updates = metricUpdates.Updates
                 .Select(u => new MetricUpdate(metricUpdates.Metric.ModelId, metricUpdates.Metric.MetricName, u.Index, u.Value))
                 .ToList();
@@ -46,13 +47,13 @@ namespace ModelStoreApi.Services
             await _hubContext.Clients.Group(seriesKey.ToString()).SendAsync("AddMetricData", updates, cancellationToken);
         }
 
-        private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, ModelDto trainingStats, CancellationToken cancellationToken)
+        private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, ModelData trainingStats, CancellationToken cancellationToken)
         {
             LogInformation("AddTrainingStats: tag = {tag}, trainingStats = {trainingStats}", tag, trainingStats);
             await _hubContext.Clients.Group(tag).SendAsync("AddTrainingStats", trainingStats, cancellationToken);
         }
 
-        private async System.Threading.Tasks.Task SendUpdateTrainingStatsAsync(string tag, ModelDto trainingStats, CancellationToken cancellationToken)
+        private async System.Threading.Tasks.Task SendUpdateTrainingStatsAsync(string tag, ModelData trainingStats, CancellationToken cancellationToken)
         {
             LogInformation("UpdateTrainingStats: tag = {tag}, trainingStats = {trainingStats}", tag, trainingStats);
             await _hubContext.Clients.Group(tag).SendAsync("UpdateTrainingStats", trainingStats, cancellationToken);

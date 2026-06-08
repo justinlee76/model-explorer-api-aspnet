@@ -1,20 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
 using ModelStoreApi.Domain;
 using ModelStoreApi.Dtos;
-using ModelStoreApi.Services;
-using System.Text.Json;
+using ModelStoreApi.Dtos.Api;
 
 namespace ModelStoreApi.Controllers
 {
     [ApiController]
-    [Route("[controller]/[action]")]
+    [Route("api")]
     public class ModelStoreController : ControllerBase
     {
-        private static readonly JsonSerializerOptions s_indentedJsonSerializerOptions = new()
-        {
-            WriteIndented = true
-        };
-
         private readonly IModelStore _modelStore;
 
         public ModelStoreController(IModelStore modelStore)
@@ -22,55 +16,71 @@ namespace ModelStoreApi.Controllers
             _modelStore = modelStore;
         }
 
-        [HttpGet]
+        [HttpGet("tags")]
         public async Task<ActionResult<IEnumerable<string>>> GetTags()
         {
             var tags = await _modelStore.GetTagsAsync();
             return tags;
         }
 
-        [HttpGet]
+        [HttpGet("metric-names")]
         public async Task<ActionResult<IEnumerable<string>>> GetMetricNames()
         {
             var metricNames = await _modelStore.GetMetricNamesAsync();
             return metricNames;
         }
 
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<ModelDto>>> GetTrainingStats(string tag)
+        [HttpGet("models")]
+        public async Task<ActionResult<IEnumerable<ModelData>>> GetModels([FromQuery] string tag)
         {
-            var trainingStats = await _modelStore.GetModelsForTagAsync(tag);
-            var statViews = trainingStats.Select(s => new ModelDto(s)).ToList();
-            return statViews;
+            var models = await _modelStore.GetModelsForTagAsync(tag);
+            return models.Select(ModelData.FromDomain).ToList();
         }
 
-        [HttpPost]
-        public async Task<ActionResult<IEnumerable<MetricHistoryDto>>> GetTrainingData([FromBody] MetricHistoryRequest? request)
+        [HttpPost("metric-history")]
+        [ProducesResponseType(typeof(IEnumerable<MetricHistoryData>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(DetailResponse), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<IEnumerable<MetricHistoryData>>> GetMetricHistory([FromBody] List<SeriesKey?>? request)
         {
             if (!TryValidateMetricHistoryRequest(request, out var errorMessage))
-                return BadRequest(errorMessage);
+                return BadRequest(new DetailResponse(errorMessage));
 
-            var seriesKeys = request!.SeriesKeys!;
-            var keys = seriesKeys.Select(s => new MetricHistoryKey(s.ModelId, s.MetricName)).ToArray();
-            var trainingData = await _modelStore.GetMetricHistoryAsync(keys);
-            var dict = trainingData.ToDictionary(d => new SeriesKey(d.Id, d.MetricName));
-            var histories = new List<MetricHistory>();
+            var seriesKeys = request!.Select(k => k!).ToArray();
+            var keys = seriesKeys.Select(s => new MetricHistoryKey(s.Id, s.MetricName)).ToArray();
+
+            List<MetricHistory> metricHistory;
+            try
+            {
+                metricHistory = await _modelStore.GetMetricHistoryAsync(keys);
+            }
+            catch (FormatException ex)
+            {
+                return BadRequest(new DetailResponse(ex.Message));
+            }
+
+            var dict = metricHistory.ToDictionary(d => new SeriesKey { Id = d.Id, MetricName = d.MetricName });
+            var response = new List<MetricHistoryData>();
             foreach (var seriesKey in seriesKeys)
             {
                 if (dict.TryGetValue(seriesKey, out var history))
                 {
-                    histories.Add(history);
+                    response.Add(MetricHistoryData.FromDomain(history));
                 }
                 else
                 {
-                    histories.Add(new MetricHistory { Id = seriesKey.ModelId, MetricName = seriesKey.MetricName, Values = [] });
+                    response.Add(new MetricHistoryData
+                    {
+                        Id = seriesKey.Id,
+                        MetricName = seriesKey.MetricName,
+                        Values = []
+                    });
                 }
             }
-            var seriesList = histories.Select(d => new MetricHistoryDto(d.Id, d.MetricName, d.Values)).ToList();
-            return seriesList;
+
+            return response;
         }
 
-        private static bool TryValidateMetricHistoryRequest(MetricHistoryRequest? request, out string errorMessage)
+        private static bool TryValidateMetricHistoryRequest(IReadOnlyList<SeriesKey?>? request, out string errorMessage)
         {
             if (request is null)
             {
@@ -78,30 +88,24 @@ namespace ModelStoreApi.Controllers
                 return false;
             }
 
-            if (request.SeriesKeys is null)
+            for (var i = 0; i < request.Count; i++)
             {
-                errorMessage = "seriesKeys is required.";
-                return false;
-            }
-
-            for (var i = 0; i < request.SeriesKeys.Length; i++)
-            {
-                var seriesKey = request.SeriesKeys[i];
+                var seriesKey = request[i];
                 if (seriesKey is null)
                 {
-                    errorMessage = $"seriesKeys[{i}] is required.";
+                    errorMessage = $"request[{i}] is required.";
                     return false;
                 }
 
-                if (string.IsNullOrWhiteSpace(seriesKey.ModelId))
+                if (string.IsNullOrWhiteSpace(seriesKey.Id))
                 {
-                    errorMessage = $"seriesKeys[{i}].modelId is required.";
+                    errorMessage = $"request[{i}].id is required.";
                     return false;
                 }
 
                 if (string.IsNullOrWhiteSpace(seriesKey.MetricName))
                 {
-                    errorMessage = $"seriesKeys[{i}].metricName is required.";
+                    errorMessage = $"request[{i}].metricName is required.";
                     return false;
                 }
             }
@@ -110,94 +114,155 @@ namespace ModelStoreApi.Controllers
             return true;
         }
 
-        [HttpPost]
-        public async Task<ActionResult<DeleteResponse>> DeleteModels([FromBody] DeleteModelsRequest request)
+        [HttpPost("delete-models")]
+        [ProducesResponseType(typeof(DeleteModelsResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(DetailResponse), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<DeleteModelsResponse>> DeleteModels([FromBody] string[]? ids)
         {
-            var result = await _modelStore.DeleteModelsAsync(request.ModelIds);
-            return new DeleteResponse(result);
-        }
+            if (ids is null)
+                return BadRequest(new DetailResponse("Request body is required."));
 
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<TaskDto>>> GetTasks()
-        {
-            var tasks = await _modelStore.GetTasksAsync();
-            return tasks.Select(t => new TaskDto(t)).ToList();
-        }
-
-        [HttpPost]
-        public async Task<ActionResult<JobResponse>> InsertJob([FromBody] JobRequest request)
-        {
-            Job? job = null;
-            JobErrorDto? error = null;
             try
             {
-                job = await _modelStore.InsertJobAsync(new JobSubmission(request.TaskId, request.Args, request.KWArgs));
+                await _modelStore.DeleteModelsAsync(ids);
+                return new DeleteModelsResponse();
+            }
+            catch (FormatException ex)
+            {
+                return BadRequest(new DetailResponse(ex.Message));
             }
             catch (Exception ex)
             {
-                error = new JobErrorDto(ex.Message, ex.StackTrace);
+                return new DeleteModelsResponse
+                {
+                    Errors = ids.ToDictionary(id => id, _ => ex.Message)
+                };
             }
-
-            var id = job?.Id;
-            return new JobResponse(id, error);
         }
 
-        [HttpGet]
-        public async Task<ActionResult<JobDefaults>> GetJobDefaults()
+        [HttpGet("tasks")]
+        public async Task<ActionResult<IEnumerable<TaskData>>> GetTasks()
+        {
+            var tasks = await _modelStore.GetTasksAsync();
+            return tasks.Select(TaskData.FromDomain).ToList();
+        }
+
+        [HttpPost("add-job")]
+        [ProducesResponseType(typeof(AddJobResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(DetailResponse), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<AddJobResponse>> AddJob([FromBody] JobInputs? inputs)
+        {
+            if (inputs is null)
+                return BadRequest(new DetailResponse("Request body is required."));
+
+            var job = await _modelStore.InsertJobAsync(new JobSubmission(inputs.TaskId, inputs.Args, inputs.Kwargs));
+            return new AddJobResponse { Id = job.Id };
+        }
+
+        [HttpGet("job-defaults")]
+        public async Task<ActionResult<JobInputs>> GetJobDefaults()
         {
             var lastJob = await _modelStore.GetLastJobAsync();
-            string? taskId;
-            string args;
-            string kwargs;
             if (lastJob != null)
             {
-
-                taskId = lastJob.TaskId;
-                args = JsonSerializer.Serialize(lastJob.Args, s_indentedJsonSerializerOptions);
-                kwargs = JsonSerializer.Serialize(lastJob.KWArgs, s_indentedJsonSerializerOptions);
+                return new JobInputs
+                {
+                    TaskId = lastJob.TaskId,
+                    Args = JobInputs.ToJsonElements(lastJob.Args),
+                    Kwargs = JobInputs.ToJsonElements(lastJob.KWArgs)
+                };
             }
-            else
+
+            var tasks = await _modelStore.GetTasksAsync();
+            return new JobInputs
             {
-                var tasks = await _modelStore.GetTasksAsync();
-                taskId = tasks.FirstOrDefault()?.Id;
-                args = "[]";
-                kwargs = "{}";
-            }
-
-            return new JobDefaults(
-                    taskId,
-                    args,
-                    kwargs
-                );
+                TaskId = tasks.FirstOrDefault()?.Id ?? string.Empty,
+                Args = [],
+                Kwargs = []
+            };
         }
 
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<JobDto>>> GetJobs()
+        [HttpGet("jobs")]
+        public async Task<ActionResult<IEnumerable<JobData>>> GetJobs()
         {
             var jobs = await _modelStore.GetJobsAsync();
-            var jobDtos = jobs.Select(j => new JobDto(j)).ToList();
-            return jobDtos;
+            return jobs.Select(JobData.FromDomain).ToList();
         }
 
-        [HttpPost]
-        public async Task<ActionResult<UpdateResponse>> StopJob([FromBody] StopJobRequest request)
+        [HttpPost("stop-job")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(typeof(DetailResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(DetailResponse), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> StopJob([FromBody] StopJobRequest? request)
         {
-            var result = await _modelStore.UpdateJobStatusAsync(request.JobId, JobStatus.Stopping);
-            return new UpdateResponse(result);
+            if (request is null)
+                return BadRequest(new DetailResponse("Request body is required."));
+
+            if (string.IsNullOrWhiteSpace(request.Id))
+                return BadRequest(new DetailResponse("id is required."));
+
+            long modifiedCount;
+            try
+            {
+                modifiedCount = await _modelStore.UpdateJobStatusAsync(request.Id, JobStatus.Stopping);
+            }
+            catch (FormatException ex)
+            {
+                return BadRequest(new DetailResponse(ex.Message));
+            }
+
+            if (modifiedCount == 0)
+                return NotFound(new DetailResponse("Job not found"));
+
+            return NoContent();
         }
 
-        [HttpDelete("{jobId}")]
-        public async Task<ActionResult<DeleteResponse>> DeleteJob(string jobId)
+        [HttpDelete("delete-job/{id}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(typeof(DetailResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(DetailResponse), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DeleteJob(string id)
         {
-            var result = await _modelStore.DeleteJobAsync(jobId);
-            return new DeleteResponse(result);
+            long deletedCount;
+            try
+            {
+                deletedCount = await _modelStore.DeleteJobAsync(id);
+            }
+            catch (FormatException ex)
+            {
+                return BadRequest(new DetailResponse(ex.Message));
+            }
+
+            if (deletedCount == 0)
+                return NotFound(new DetailResponse("Job not found"));
+
+            return NoContent();
         }
 
-        [HttpGet]
-        public async Task<ActionResult<GetJobMessagesResponse>> GetJobMessages(string jobId)
+        [HttpGet("jobs/{id}/messages")]
+        [ProducesResponseType(typeof(IEnumerable<string>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(DetailResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(DetailResponse), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<IEnumerable<string>>> GetJobMessages(string id)
         {
-            var messages = await _modelStore.GetJobMessagesAsync(jobId);
-            return new GetJobMessagesResponse([.. messages]);
+            List<string> messages;
+            try
+            {
+                messages = await _modelStore.GetJobMessagesAsync(id);
+            }
+            catch (FormatException ex)
+            {
+                return BadRequest(new DetailResponse(ex.Message));
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new DetailResponse("Job messages not found"));
+            }
+
+            if (messages is null)
+                return NotFound(new DetailResponse("Job messages not found"));
+
+            return messages;
         }
     }
 }

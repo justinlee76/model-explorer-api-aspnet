@@ -1,7 +1,11 @@
 ﻿namespace ModelStoreApi.Dtos
 {
-    public record SeriesKey(string ModelId, string MetricName)
+    public sealed record SeriesKey
     {
-        public override string ToString() => ModelId + ':' + MetricName;
+        public string Id { get; init; } = string.Empty;
+
+        public string MetricName { get; init; } = string.Empty;
+
+        public override string ToString() => Id + ':' + MetricName;
     }
 }

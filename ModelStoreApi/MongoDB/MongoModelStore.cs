@@ -228,7 +228,7 @@ namespace ModelStoreApi.MongoDB
             var filter = Builders<Job>.Filter.Eq(j => j.Id, jobId);
             var update = Builders<Job>.Update.Set(j => j.Status, status);
             var result = await _jobs.UpdateOneAsync(filter, update);
-            return result.IsModifiedCountAvailable ? result.ModifiedCount : 0;
+            return result.IsAcknowledged ? result.MatchedCount : 0;
         }
 
         public async Task<long> DeleteJobAsync(string jobId)
@@ -243,6 +243,9 @@ namespace ModelStoreApi.MongoDB
 
             var messages = new List<string>();
             var bsonArray = await GetJobMessageBsonArray(new ObjectId(jobId));
+            if (bsonArray is null)
+                throw new KeyNotFoundException("Job messages not found");
+
             foreach (var entry in bsonArray)
             {
                 if (entry.IsBsonDocument && entry.AsBsonDocument.TryGetValue("message", out var message) && message.IsString)
@@ -365,11 +368,14 @@ namespace ModelStoreApi.MongoDB
                 type => type.Namespace == typeof(Model).Namespace);
         }
 
-        private async Task<BsonArray> GetJobMessageBsonArray(ObjectId jobId)
+        private async Task<BsonArray?> GetJobMessageBsonArray(ObjectId jobId)
         {
             var filter = Builders<BsonDocument>.Filter.Eq("_id", jobId);
             var projection = Builders<BsonDocument>.Projection.Include("logs").Exclude("_id");
             var job = await _jobsBson.Find(filter).Project(projection).FirstOrDefaultAsync();
+            if (job is null)
+                return null;
+
             if (job != null && job.TryGetValue("logs", out var bsonValue) && bsonValue.IsBsonArray)
                 return bsonValue.AsBsonArray;
             return [];

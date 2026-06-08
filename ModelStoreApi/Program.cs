@@ -3,14 +3,21 @@ using ModelStoreApi.Dtos;
 using ModelStoreApi.Hubs;
 using ModelStoreApi.MongoDB;
 using ModelStoreApi.Services;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    });
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 builder.Services.Configure<MongoModelStoreSettings>(builder.Configuration.GetSection("ModelStore"));
 builder.Services.AddSingleton<IModelStore, MongoModelStore>();
@@ -42,7 +49,11 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
+
+app.UseCors("AllowReactApp");
 
 app.UseAuthorization();
 
@@ -50,6 +61,5 @@ app.MapControllers();
 
 app.MapHub<ModelDataHub>("/ModelDataHub");
 app.MapHub<JobHub>("/JobHub");
-app.UseCors("AllowReactApp");
 
 app.Run();

@@ -20,13 +20,13 @@ namespace ModelStoreApi.Services
                 {
                     case JobCollectionChangeKind.Added:
                         if (change.Job != null)
-                            await SendAddJobAsync(new JobDto(change.Job));
+                            await SendAddJobAsync(JobData.FromDomain(change.Job));
                         break;
                     case JobCollectionChangeKind.Updated:
                         if (change.Messages != null)
                             await System.Threading.Tasks.Task.WhenAll(change.Messages.Select(SendAddJobMessage));
                         if (change.Job != null)
-                            await SendUpdateJobAsync(new JobDto(change.Job));
+                            await SendUpdateJobAsync(JobData.FromDomain(change.Job));
                         break;
                     case JobCollectionChangeKind.Removed:
                         await SendRemoveJobAsync(change.JobId);
@@ -35,13 +35,13 @@ namespace ModelStoreApi.Services
             }
         }
 
-        private async System.Threading.Tasks.Task SendAddJobAsync(JobDto job)
+        private async System.Threading.Tasks.Task SendAddJobAsync(JobData job)
         {
             LogInformation("AddJob: {Job}", job);
             await _hubContext.Clients.All.SendAsync("AddJob", job);
         }
 
-        private async System.Threading.Tasks.Task SendUpdateJobAsync(JobDto job)
+        private async System.Threading.Tasks.Task SendUpdateJobAsync(JobData job)
         {
             LogInformation("UpdateJob: {Job}", job);
             await _hubContext.Clients.All.SendAsync("UpdateJob", job);
