@@ -475,7 +475,7 @@ namespace ModelStoreApi.MongoDB
                 return null;
 
             var sendUpdate = false;
-            var updatesMap = new Dictionary<MetricHistoryKey, List<MetricValueUpdate>>();
+            var metricUpdates = new List<ModelMetricUpdate>();
             foreach (var field in change.UpdateDescription.UpdatedFields)
             {
                 var components = field.Name.Split('.');
@@ -486,15 +486,18 @@ namespace ModelStoreApi.MongoDB
                 {
                     if (components.Length == 3 && int.TryParse(components[2], out var index) && field.Value.IsDouble)
                     {
-                        AddMetricUpdate(updatesMap, modelId, components[1], index, field.Value.AsDouble);
+                        metricUpdates.Add(new ModelMetricUpdate(modelId, components[1], index, field.Value.AsDouble));
                     }
                     else if (components.Length == 1 && field.Value.IsBsonDocument)
                     {
                         foreach (var element in field.Value.AsBsonDocument.Where(e => e.Value.IsBsonArray))
                         {
                             var bsonArray = element.Value.AsBsonArray;
-                            if (bsonArray.Count == 1 && bsonArray[0].IsDouble)
-                                AddMetricUpdate(updatesMap, modelId, element.Name, 0, bsonArray[0].AsDouble);
+                            for (var i = 0; i < bsonArray.Count; i++)
+                            {
+                                if (bsonArray[i].IsDouble)
+                                    metricUpdates.Add(new ModelMetricUpdate(modelId, element.Name, i, bsonArray[i].AsDouble));
+                            }
                         }
                     }
                 }
@@ -506,27 +509,12 @@ namespace ModelStoreApi.MongoDB
             if (!sendUpdate)
                 return null;
 
-            var metricUpdates = updatesMap
-                .Select(kvp => new ModelMetricUpdates(kvp.Key, kvp.Value))
-                .ToList();
             return new ModelCollectionChange(
                 ModelCollectionChangeKind.Updated,
                 modelId,
                 change.FullDocument.Tag,
                 change.FullDocument,
                 metricUpdates);
-        }
-
-        private static void AddMetricUpdate(Dictionary<MetricHistoryKey, List<MetricValueUpdate>> updatesMap, string modelId, string metricName, int index, double metricValue)
-        {
-            var key = new MetricHistoryKey(modelId, metricName);
-            if (!updatesMap.TryGetValue(key, out var metricUpdates))
-            {
-                metricUpdates = [];
-                updatesMap.Add(key, metricUpdates);
-            }
-
-            metricUpdates.Add(new MetricValueUpdate(index, metricValue));
         }
 
         private JobCollectionChange? CreateJobCollectionChange(ChangeStreamDocument<Job> change)

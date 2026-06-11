@@ -7,14 +7,12 @@ namespace ModelStoreApi.Domain
         Removed
     }
 
-    public record MetricValueUpdate(int Index, double Value);
-
-    public record ModelMetricUpdates(MetricHistoryKey Metric, IReadOnlyList<MetricValueUpdate> Updates);
+    public record ModelMetricUpdate(string Id, string MetricName, int Index, double Value);
 
     public record ModelCollectionChange(
         ModelCollectionChangeKind Kind,
         string ModelId,
         string Tag,
         Model? Model = null,
-        IReadOnlyList<ModelMetricUpdates>? MetricUpdates = null);
+        IReadOnlyList<ModelMetricUpdate>? MetricUpdates = null);
 }

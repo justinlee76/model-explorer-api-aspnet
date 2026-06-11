@@ -37,14 +37,12 @@ namespace ModelStoreApi.Services
             }
         }
 
-        private async System.Threading.Tasks.Task SendAddMetricDataAsync(ModelMetricUpdates metricUpdates, CancellationToken cancellationToken)
+        private async System.Threading.Tasks.Task SendAddMetricDataAsync(ModelMetricUpdate modelMetricUpdate, CancellationToken cancellationToken)
         {
-            var seriesKey = new SeriesKey { Id = metricUpdates.Metric.ModelId, MetricName = metricUpdates.Metric.MetricName };
-            var updates = metricUpdates.Updates
-                .Select(u => new MetricUpdate(metricUpdates.Metric.ModelId, metricUpdates.Metric.MetricName, u.Index, u.Value))
-                .ToList();
-            LogInformation("AddMetricData: seriesKey = {seriesKey}, metricUpdates = {metricUpdates}", seriesKey, metricUpdates);
-            await _hubContext.Clients.Group(seriesKey.ToString()).SendAsync("AddMetricData", updates, cancellationToken);
+            var seriesKey = new SeriesKey { Id = modelMetricUpdate.Id, MetricName = modelMetricUpdate.MetricName };
+            var metricUpdate = MetricUpdate.FromDomain(modelMetricUpdate);
+            LogInformation("AddMetricData: seriesKey = {seriesKey}, metricUpdate = {metricUpdate}", seriesKey, metricUpdate);
+            await _hubContext.Clients.Group(seriesKey.ToString()).SendAsync("AddMetricData", metricUpdate, cancellationToken);
         }
 
         private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, ModelData trainingStats, CancellationToken cancellationToken)

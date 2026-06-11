@@ -2,17 +2,18 @@ using ModelStoreApi;
 using ModelStoreApi.Dtos;
 using ModelStoreApi.Hubs;
 using ModelStoreApi.MongoDB;
+using ModelStoreApi.Serialization;
 using ModelStoreApi.Services;
-using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
+var jsonNamingPolicy = new CustomNamingPolicy();
 
 // Add services to the container.
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.PropertyNamingPolicy = jsonNamingPolicy;
     });
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -23,7 +24,11 @@ builder.Services.Configure<MongoModelStoreSettings>(builder.Configuration.GetSec
 builder.Services.AddSingleton<IModelStore, MongoModelStore>();
 builder.Services.AddSingleton<SubscriptionTracker<SeriesKey>>();
 builder.Services.AddSingleton<SubscriptionTracker<string>>();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.PropertyNamingPolicy = jsonNamingPolicy;
+    });
 builder.Services.AddHostedService<ModelMonitor>();
 builder.Services.AddHostedService<JobMonitor>();
 var allowOrigins = builder.Configuration.GetSection("AllowOrigins").Get<string[]>();
