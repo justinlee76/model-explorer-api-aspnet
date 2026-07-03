@@ -13,7 +13,7 @@ namespace ModelStoreApi
         IAsyncEnumerable<JobCollectionChange> MonitorJobsAsync(CancellationToken cancellationToken);
         Task<List<Domain.Task>> GetTasksAsync();
         Task<Job> InsertJobAsync(JobSubmission job);
-        Task<Job> GetLastJobAsync();
+        Task<Job?> GetLastJobAsync();
         Task<IEnumerable<Job>> GetJobsAsync();
         Task<long> UpdateJobStatusAsync(string jobId, JobStatus status);
         Task<long> DeleteJobAsync(string jobId);

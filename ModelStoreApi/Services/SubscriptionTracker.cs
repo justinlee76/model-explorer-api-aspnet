@@ -1,6 +1,6 @@
 ﻿namespace ModelStoreApi.Services
 {
-    public class SubscriptionTracker<T> where T: notnull
+    public class SubscriptionTracker<T> where T : notnull
     {
         private readonly Lock _lock = new();
         private readonly Dictionary<T, HashSet<string>> _keysToConnections = new();
@@ -52,42 +52,14 @@
             }
         }
 
-        //public HashSet<string> GetConnectionsForSeries(SeriesKey seriesKey)
-        //{
-        //    HashSet<string> connections;
-        //    if (!_seriesToConnections.TryGetValue(seriesKey, out connections!))
-        //        connections = [];
-        //    return connections;
-        //}
-
-        public HashSet<T> GetKeysForConnection(string connectionId)
+        public IReadOnlyCollection<T> GetKeysForConnection(string connectionId)
         {
-            HashSet<T> series;
-            if (!_connectionsToKeys.TryGetValue(connectionId, out series!))
-                series = [];
-            return series;
+            using (_lock.EnterScope())
+            {
+                return _connectionsToKeys.TryGetValue(connectionId, out var keys)
+                    ? keys.ToArray()
+                    : [];
+            }
         }
-
-        //public void RemoveConnection(string connectionId)
-        //{
-        //    using (_lock.EnterScope())
-        //    {
-        //        HashSet<SeriesKey> keys;
-        //        if (_connectionsToSeries.TryGetValue(connectionId, out keys!))
-        //            foreach (var seriesKey in keys)
-        //            {
-        //                HashSet<string> ids;
-        //                if (_seriesToConnections.TryGetValue(seriesKey, out ids!))
-        //                {
-        //                    ids.Remove(connectionId);
-
-        //                    if (ids.Count == 0)
-        //                        _seriesToConnections.Remove(seriesKey);
-        //                }
-        //            }
-
-        //        _connectionsToSeries.Remove(connectionId);
-        //    }
-        //}
     }
 }

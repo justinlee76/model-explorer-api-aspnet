@@ -202,7 +202,7 @@ namespace ModelStoreApi.MongoDB
             return job;
         }
 
-        public async Task<Job> GetLastJobAsync()
+        public async Task<Job?> GetLastJobAsync()
         {
             var sort = Builders<Job>.Sort.Descending(j => j.DateTime);
             var job = await _jobs
@@ -376,7 +376,7 @@ namespace ModelStoreApi.MongoDB
             if (job is null)
                 return null;
 
-            if (job != null && job.TryGetValue("logs", out var bsonValue) && bsonValue.IsBsonArray)
+            if (job.TryGetValue("logs", out var bsonValue) && bsonValue.IsBsonArray)
                 return bsonValue.AsBsonArray;
             return [];
         }

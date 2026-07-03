@@ -8,14 +8,11 @@ using ModelStoreApi.Services;
 var builder = WebApplication.CreateBuilder(args);
 var jsonNamingPolicy = new CustomNamingPolicy();
 
-// Add services to the container.
-
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = jsonNamingPolicy;
     });
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -31,26 +28,26 @@ builder.Services.AddSignalR()
     });
 builder.Services.AddHostedService<ModelMonitor>();
 builder.Services.AddHostedService<JobMonitor>();
+
 var allowOrigins = builder.Configuration.GetSection("AllowOrigins").Get<string[]>();
-if (allowOrigins != null)
+var useCors = allowOrigins is { Length: > 0 };
+if (useCors)
 {
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("AllowReactApp",
             policy =>
             {
-                policy.WithOrigins(allowOrigins)   // React dev server
+                policy.WithOrigins(allowOrigins!)
                       .AllowAnyHeader()
                       .AllowAnyMethod()
-                      .AllowCredentials(); // only if using cookies/auth
+                      .AllowCredentials();
             });
     });
 }
 
-
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -58,7 +55,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseCors("AllowReactApp");
+if (useCors)
+    app.UseCors("AllowReactApp");
 
 app.UseAuthorization();
 
