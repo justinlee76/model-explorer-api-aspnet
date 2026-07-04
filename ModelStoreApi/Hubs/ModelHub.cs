@@ -3,7 +3,7 @@ using ModelStoreApi.Services;
 
 namespace ModelStoreApi.Hubs
 {
-    public class ModelDataHub(SubscriptionTracker<SeriesKey> subscriptionTracker, ILogger<ModelDataHub> logger) : SubscribableHub<SeriesKey>(subscriptionTracker, logger)
+    public class ModelHub(SubscriptionTracker<SeriesKey> subscriptionTracker, ILogger<ModelHub> logger) : SubscribableHub<SeriesKey>(subscriptionTracker, logger)
     {
         public async Task SubscribeAll(List<SeriesKey> seriesKeys)
         {
@@ -15,16 +15,16 @@ namespace ModelStoreApi.Hubs
             await Task.WhenAll(seriesKeys.Select(Unsubscribe));
         }
 
-        public async Task MonitorTag(string tag)
+        public async Task SubscribeTag(string tag)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, tag);
-            LogInformation("Connection {connectionId} monitoring tag {tag}", Context.ConnectionId, tag);
+            LogInformation("Connection {connectionId} subscribed to tag {tag}", Context.ConnectionId, tag);
         }
 
-        public async Task EndMonitoring(string tag)
+        public async Task UnsubscribeTag(string tag)
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, tag);
-            LogInformation("Connection {connectionId} ended monitoring of tag {tag}", Context.ConnectionId, tag);
+            LogInformation("Connection {connectionId} unsubscribed from tag {tag}", Context.ConnectionId, tag);
         }
     }
 }

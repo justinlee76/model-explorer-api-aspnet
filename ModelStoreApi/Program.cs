@@ -62,7 +62,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.MapHub<ModelDataHub>("/ModelDataHub");
+app.MapHub<ModelHub>("/ModelHub");
 app.MapHub<JobHub>("/JobHub");
 
 app.Run();

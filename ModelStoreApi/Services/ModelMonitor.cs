@@ -7,10 +7,10 @@ using ModelStoreApi.Domain;
 
 namespace ModelStoreApi.Services
 {
-    public class ModelMonitor(IModelStore modelStore, IHubContext<ModelDataHub> hubContext, ILogger<ModelMonitor> logger) : BackgroundService
+    public class ModelMonitor(IModelStore modelStore, IHubContext<ModelHub> hubContext, ILogger<ModelMonitor> logger) : BackgroundService
     {
         private readonly IModelStore _modelStore = modelStore;
-        private readonly IHubContext<ModelDataHub> _hubContext = hubContext;
+        private readonly IHubContext<ModelHub> _hubContext = hubContext;
         private readonly ILogger<ModelMonitor> _logger = logger;
 
         protected override async System.Threading.Tasks.Task ExecuteAsync(CancellationToken cancellationToken)
@@ -22,16 +22,16 @@ namespace ModelStoreApi.Services
                 {
                     case ModelCollectionChangeKind.Added:
                         if (change.Model != null)
-                            await SendAddTrainingStatsAsync(change.Tag, ModelData.FromDomain(change.Model), cancellationToken);
+                            await SendAddModelAsync(change.Tag, ModelData.FromDomain(change.Model), cancellationToken);
                         break;
                     case ModelCollectionChangeKind.Removed:
-                        await SendRemoveTrainingStatsAsync(change.Tag, change.ModelId, cancellationToken);
+                        await SendRemoveModelAsync(change.Tag, change.ModelId, cancellationToken);
                         break;
                     case ModelCollectionChangeKind.Updated:
                         if (change.MetricUpdates != null)
                             await System.Threading.Tasks.Task.WhenAll(change.MetricUpdates.Select(m => SendAddMetricDataAsync(m, cancellationToken)));
                         if (change.Model != null)
-                            await SendUpdateTrainingStatsAsync(change.Tag, ModelData.FromDomain(change.Model), cancellationToken);
+                            await SendUpdateModelAsync(change.Tag, ModelData.FromDomain(change.Model), cancellationToken);
                         break;
                 }
             }
@@ -45,22 +45,22 @@ namespace ModelStoreApi.Services
             await _hubContext.Clients.Group(seriesKey.ToString()).SendAsync("AddMetricData", metricUpdate, cancellationToken);
         }
 
-        private async System.Threading.Tasks.Task SendAddTrainingStatsAsync(string tag, ModelData trainingStats, CancellationToken cancellationToken)
+        private async System.Threading.Tasks.Task SendAddModelAsync(string tag, ModelData model, CancellationToken cancellationToken)
         {
-            LogInformation("AddTrainingStats: tag = {tag}, trainingStats = {trainingStats}", tag, trainingStats);
-            await _hubContext.Clients.Group(tag).SendAsync("AddTrainingStats", trainingStats, cancellationToken);
+            LogInformation("AddModel: tag = {tag}, model = {model}", tag, model);
+            await _hubContext.Clients.Group(tag).SendAsync("AddModel", model, cancellationToken);
         }
 
-        private async System.Threading.Tasks.Task SendUpdateTrainingStatsAsync(string tag, ModelData trainingStats, CancellationToken cancellationToken)
+        private async System.Threading.Tasks.Task SendUpdateModelAsync(string tag, ModelData model, CancellationToken cancellationToken)
         {
-            LogInformation("UpdateTrainingStats: tag = {tag}, trainingStats = {trainingStats}", tag, trainingStats);
-            await _hubContext.Clients.Group(tag).SendAsync("UpdateTrainingStats", trainingStats, cancellationToken);
+            LogInformation("UpdateModel: tag = {tag}, model = {model}", tag, model);
+            await _hubContext.Clients.Group(tag).SendAsync("UpdateModel", model, cancellationToken);
         }
 
-        private async System.Threading.Tasks.Task SendRemoveTrainingStatsAsync(string tag, string modelId, CancellationToken cancellationToken)
+        private async System.Threading.Tasks.Task SendRemoveModelAsync(string tag, string modelId, CancellationToken cancellationToken)
         {
-            LogInformation("RemoveTrainingStats: tag = {tag}, modelId = {modelId}", tag, modelId);
-            await _hubContext.Clients.Group(tag).SendAsync("RemoveTrainingStats", modelId, cancellationToken);
+            LogInformation("RemoveModel: tag = {tag}, modelId = {modelId}", tag, modelId);
+            await _hubContext.Clients.Group(tag).SendAsync("RemoveModel", modelId, cancellationToken);
         }
 
         private void LogInformation(string message, params object[] args)
