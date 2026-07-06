@@ -14,6 +14,14 @@ ASP.NET Core API for querying model training runs, exposing job controls, and br
 
 - .NET 10 SDK
 - MongoDB replica set or deployment that supports change streams
+- The MongoDB `models` collection must have change stream pre/post images enabled:
+
+```javascript
+db.runCommand({
+  collMod: "models",
+  changeStreamPreAndPostImages: { enabled: true }
+})
+```
 
 ## Getting started
 
