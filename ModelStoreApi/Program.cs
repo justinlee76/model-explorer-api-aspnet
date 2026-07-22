@@ -58,6 +58,9 @@ if (app.Environment.IsDevelopment())
 if (useCors)
     app.UseCors("AllowReactApp");
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseAuthorization();
 
 app.MapControllers();
