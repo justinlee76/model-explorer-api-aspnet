@@ -126,33 +126,25 @@ namespace ModelStoreApi.MongoDB
         {
             LogInformation("Deleting {ModelId}", modelId);
 
-            var filter = Builders<Model>.Filter.Eq(m => m.Id, modelId);
+            var filter = Builders<Model>.Filter.And(
+                Builders<Model>.Filter.Eq(m => m.Id, modelId),
+                Builders<Model>.Filter.Eq(m => m.Status, ModelStatus.Trained)
+            );
             var model = await _models.Find(filter).FirstOrDefaultAsync();
 
-            DeleteResult deleteResult = null!;
-            if (model != null)
+            DeleteResult deleteResult = await _models.DeleteOneAsync(filter);
+
+            if (deleteResult.IsAcknowledged && deleteResult.DeletedCount == 1)
             {
-                if (model.Status == ModelStatus.Trained)
+                try
                 {
-                    deleteResult = await _models.DeleteOneAsync(filter);
-
-                    if (deleteResult.IsAcknowledged && deleteResult.DeletedCount == 1)
-                    {
-                        try
-                        {
-                            await _bucket.DeleteAsync(new ObjectId(modelId));
-                        }
-                        catch (GridFSFileNotFoundException)
-                        {
-                            LogWarning("Model state for {ModelId} not found", modelId);
-                        }
-                    }
-                } else
-                    LogInformation("Model {ModelId} not deleted because it is still being trained", modelId);
-            } else
-                LogInformation("Model {ModelId} not found", modelId);
-
-            deleteResult ??= new DeleteResult.Acknowledged(0);
+                    await _bucket.DeleteAsync(new ObjectId(modelId));
+                }
+                catch (GridFSFileNotFoundException)
+                {
+                    LogWarning("Model state for {ModelId} not found", modelId);
+                }
+            }
 
             return deleteResult;
         }
