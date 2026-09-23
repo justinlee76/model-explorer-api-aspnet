@@ -135,7 +135,7 @@ namespace ModelStoreApi.Controllers
             {
                 return new DeleteModelsResponse
                 {
-                    Errors = ids.ToDictionary(id => id, _ => ex.Message)
+                    Error = ex.Message
                 };
             }
         }

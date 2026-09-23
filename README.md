@@ -103,7 +103,7 @@ The REST API has a fixed `/api` prefix. JSON fields use camel case, including `t
 | `GET` | `/api/models?tag=...` | List model runs for a tag. |
 | `GET` | `/api/metric-names` | List stored metric names. |
 | `POST` | `/api/metric-history` | Return histories for model/metric key objects. |
-| `POST` | `/api/delete-models` | Attempt to delete trained-model IDs supplied as a JSON string array and return an `errors` object. |
+| `POST` | `/api/delete-models` | Attempt to delete trained-model IDs supplied as a JSON string array and return one `error` message if deletion fails. |
 | `GET` | `/api/tasks` | List registered training tasks. |
 | `GET` | `/api/job-defaults` | Return inputs from the latest job, or the first registered task. |
 | `POST` | `/api/add-job` | Add a submitted training job. |
@@ -132,7 +132,7 @@ curl --request POST http://localhost:5071/api/metric-history \
 
 The training service executes submitted jobs and records their status, logs, metrics, and model state. Without a running worker, new jobs remain in the `Submitted` state.
 
-`POST /api/delete-models` only deletes models whose status is `Trained`; models still marked `Training` and nonexistent IDs are ignored, and the response has no deletion count. Deleting a trained model also attempts to remove its same-ID GridFS checkpoint.
+`POST /api/delete-models` processes IDs in order and only deletes models whose status is `Trained`; models still marked `Training` and nonexistent IDs are ignored. The response has an `error` string (or `null` on success) and no deletion count. If deletion fails, processing stops, so earlier models may already be deleted. Deleting a trained model also attempts to remove its same-ID GridFS checkpoint.
 
 ## SignalR
 

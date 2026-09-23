@@ -111,18 +111,26 @@ namespace ModelStoreApi.MongoDB
             return trainingData;
         }
 
-        public async Task<long> DeleteModelsAsync(string[] modelIds)
+        public async System.Threading.Tasks.Task DeleteModelsAsync(string[] modelIds)
         {
-            LogInformation("Deleting {ModelIds}", string.Join(", ", modelIds));
-
-            var tasks = modelIds.Select(DeleteModelAsync);
-            var deleteResults = await System.Threading.Tasks.Task.WhenAll(tasks);
-
-            var deletedCount = deleteResults.Where(d => d.IsAcknowledged).Sum(d => d.DeletedCount);
-            return deletedCount;
+            foreach (var modelId in modelIds)
+            {
+                try
+                {
+                    await DeleteModelAsync(modelId);
+                }
+                catch (FormatException ex)
+                {
+                    throw new FormatException($"Invalid model ID '{modelId}': {ex.Message}", ex);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException($"Failed to delete model '{modelId}': {ex.Message}", ex);
+                }
+            }
         }
 
-        private async Task<DeleteResult> DeleteModelAsync(string modelId)
+        private async System.Threading.Tasks.Task DeleteModelAsync(string modelId)
         {
             LogInformation("Deleting {ModelId}", modelId);
 
@@ -130,7 +138,6 @@ namespace ModelStoreApi.MongoDB
                 Builders<Model>.Filter.Eq(m => m.Id, modelId),
                 Builders<Model>.Filter.Eq(m => m.Status, ModelStatus.Trained)
             );
-            var model = await _models.Find(filter).FirstOrDefaultAsync();
 
             DeleteResult deleteResult = await _models.DeleteOneAsync(filter);
 
@@ -145,8 +152,6 @@ namespace ModelStoreApi.MongoDB
                     LogWarning("Model state for {ModelId} not found", modelId);
                 }
             }
-
-            return deleteResult;
         }
 
         public async IAsyncEnumerable<ModelCollectionChange> MonitorModelsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
@@ -215,19 +220,19 @@ namespace ModelStoreApi.MongoDB
             return jobs;
         }
 
-        public async Task<long> UpdateJobStatusAsync(string jobId, JobStatus status)
+        public async Task<int> UpdateJobStatusAsync(string jobId, JobStatus status)
         {
             var filter = Builders<Job>.Filter.Eq(j => j.Id, jobId);
             var update = Builders<Job>.Update.Set(j => j.Status, status);
             var result = await _jobs.UpdateOneAsync(filter, update);
-            return result.IsAcknowledged ? result.MatchedCount : 0;
+            return result.IsAcknowledged ? (int)result.MatchedCount : 0;
         }
 
-        public async Task<long> DeleteJobAsync(string jobId)
+        public async Task<int> DeleteJobAsync(string jobId)
         {
             var filter = Builders<Job>.Filter.Eq(j => j.Id, jobId);
             var result = await _jobs.DeleteOneAsync(filter);
-            return result.IsAcknowledged ? result.DeletedCount : 0;
+            return result.IsAcknowledged ? (int)result.DeletedCount : 0;
         }
 
         public async Task<List<string>> GetJobMessagesAsync(string jobId)
